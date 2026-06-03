@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>小信 · AI自对话测试</title>
+<style>
+:root {
+  --blue-800: #14273d; --blue-600: #234d7a; --blue-500: #2b5f99; --blue-400: #4a8fd4;
+  --amber: #f0a500; --amber-dim: #c48800;
+  --bg: #f5f0e8; --card: #fff; --text: #1a1a1a; --text-dim: #6b6b6b; --text-light: #999;
+  --shadow: 0 4px 24px rgba(13,27,42,0.10);
+  --radius: 16px;
+  --font-display: 'Georgia', 'Noto Serif SC', serif;
+  --font-body: 'system-ui', '-apple-system', 'Segoe UI', sans-serif;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+
+body {
+  font-family: var(--font-body);
+  background: var(--bg);
+  background-image:
+    radial-gradient(ellipse at 20% 10%, rgba(240,165,0,0.05) 0%, transparent 50%),
+    radial-gradient(ellipse at 80% 90%, rgba(43,95,153,0.04) 0%, transparent 50%);
+  min-height: 100vh; padding: 20px;
+}
+
+/* 顶部控制栏 */
+.control-bar {
+  max-width: 800px; margin: 0 auto 20px; background: var(--card); border-radius: var(--radius);
+  box-shadow: var(--shadow); padding: 16px 20px; display: flex; align-items: center;
+  gap: 12px; flex-wrap: wrap; border: 1px solid rgba(27,58,92,0.06);
+}
+.control-bar label { font-size: 12px; color: var(--text-dim); font-weight: 600; }
+.control-bar select {
+  padding: 6px 12px; border-radius: 8px; border: 1.5px solid rgba(27,58,92,0.15);
+  font-size: 13px; font-family: var(--font-body); background: #fafafa; cursor: pointer;
+}
+.btn {
+  padding: 8px 20px; border-radius: 24px; border: none; font-size: 13px; font-weight: 600;
+  cursor: pointer; transition: all 0.2s; font-family: var(--font-body);
+}
+.btn-play { background: linear-gradient(135deg, var(--blue-600), var(--blue-500)); color: #fff; }
+.btn-play:hover { box-shadow: 0 4px 14px rgba(43,95,153,0.3); transform: translateY(-1px); }
+.btn-pause { background: #f0a500; color: #fff; }
+.btn-reset { background: #fff; color: var(--text-dim); border: 1.5px solid rgba(27,58,92,0.15); }
+.btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; box-shadow: none; }
+
+.speed-indicator { font-size: 12px; color: var(--text-light); margin-left: auto; }
+.turn-counter { font-size: 13px; color: var(--text-dim); font-weight: 600; }
+
+/* 对话舞台 */
+.stage {
+  max-width: 800px; margin: 0 auto;
+  display: flex; flex-direction: column; gap: 16px;
+}
+
+/* 角色卡片 */
+.character-row {
+  width: 100%; display: flex; align-items: flex-start; gap: 12px;
+  animation: slide-in 0.4s cubic-bezier(0.16,1,0.3,1);
+}
+@keyframes slide-in { from { opacity:0; transform:translateY(16px); } to { opacity:1; transform:translateY(0); } }
+.character-row.right { flex-direction: row-reverse; }
+
+.avatar-circle {
+  width: 44px; height: 44px; border-radius: 50%; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center; font-size: 22px;
+}
+.avatar-circle.xiaoxin { background: linear-gradient(135deg, var(--amber), var(--amber-dim)); box-shadow: 0 2px 8px rgba(240,165,0,0.2); }
+.avatar-circle.student { background: linear-gradient(135deg, var(--blue-600), var(--blue-500)); box-shadow: 0 2px 8px rgba(43,95,153,0.2); }
+
+.bubble-wrapper { max-width: 75%; min-width: 0; }
+.character-name { font-size: 11px; color: var(--text-light); margin-bottom: 4px; font-weight: 600; }
+.character-row.right .character-name { text-align: right; }
+
+.bubble {
+  padding: 12px 18px; border-radius: var(--radius); font-size: 15px; line-height: 1.6;
+  position: relative; overflow-wrap: break-word; word-break: keep-all;
+}
+.bubble.xiaoxin { background: #f0f4f9; color: var(--text); border-bottom-left-radius: 4px; }
+.bubble.student {
+  min-width: 9em;
+  background: linear-gradient(135deg, var(--blue-600), var(--blue-500)); color: #fff; border-bottom-right-radius: 4px;
+}
+
+/* 打字光标 */
+.typing-cursor::after {
+  content: '|'; animation: blink 0.7s infinite; color: var(--amber); font-weight: bold;
+}
+@keyframes blink { 0%,100%{opacity:1;} 50%{opacity:0;} }
+
+/* 表情标签 */
+.expression-tag {
+  display: inline-block; font-size: 16px; margin-left: 4px; vertical-align: middle;
+  animation: pop-in 0.3s cubic-bezier(0.34,1.56,0.64,1);
+}
+@keyframes pop-in { from { transform:scale(0) rotate(-10deg); } to { transform:scale(1) rotate(0); } }
+
+/* 等待指示 */
+.waiting-row { display: flex; align-items: center; gap: 8px; padding: 8px 0; opacity: 0.6; }
+.waiting-dots { display: flex; gap: 4px; }
+.waiting-dots span { width: 6px; height: 6px; border-radius: 50%; background: var(--blue-400); animation: dot-bounce 1.2s infinite; }
+.waiting-dots span:nth-child(2) { animation-delay: 0.15s; }
+.waiting-dots span:nth-child(3) { animation-delay: 0.3s; }
+@keyframes dot-bounce { 0%,60%,100%{transform:translateY(0);} 30%{transform:translateY(-7px);} }
+
+/* 空状态 */
+.empty-stage {
+  text-align: center; padding: 60px 20px; color: var(--text-light);
+}
+.empty-stage .big-icon { font-size: 48px; margin-bottom: 12px; }
+.empty-stage p { font-size: 14px; line-height: 1.8; }
+
+/* 评估面板 */
+.eval-panel {
+  max-width: 800px; margin: 24px auto; background: var(--card); border-radius: var(--radius);
+  box-shadow: var(--shadow); padding: 20px; display: none; border: 1px solid rgba(27,58,92,0.06);
+}
+.eval-panel.show { display: block; }
+.eval-panel h3 { font-size: 15px; margin-bottom: 12px; color: var(--text); }
+.eval-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.eval-label { font-size: 12px; color: var(--text-dim); width: 90px; flex-shrink: 0; }
+.eval-bar { flex: 1; height: 8px; background: rgba(27,58,92,0.06); border-radius: 10px; overflow: hidden; }
+.eval-fill { height: 100%; border-radius: 10px; background: linear-gradient(90deg, var(--blue-400), var(--amber)); transition: width 0.6s ease; }
+.eval-score { font-size: 12px; font-weight: 700; color: var(--text); width: 30px; text-align: right; }
+.eval-overall { margin-top: 12px; padding: 10px 14px; background: #f8f9fb; border-radius: 8px; font-size: 13px; color: var(--text-dim); line-height: 1.6; }
+
+@media (max-width: 600px) {
+  .control-bar { flex-direction: column; align-items: stretch; }
+  .bubble { font-size: 14px; }
+}
+</style>
+</head>
+<body>
+
+<!-- 控制栏 -->
+<div class="control-bar">
+  <label>角色</label>
+  <select id="personaSelect">
+    <optgroup label="大一新生">
+      <option value="小明">小明 · 腼腆好学</option>
+      <option value="小雯">小雯 · 开朗直接</option>
+      <option value="社恐新生">阿静 · 社恐</option>
+      <option value="话痨新生">大嘴 · 话痨</option>
+    </optgroup>
+    <optgroup label="高年级/特殊">
+      <option value="大三学长">老周 · 考研学长</option>
+      <option value="杠精学生">阿怼 · 杠精</option>
+      <option value="焦虑型学生">小忧 · 焦虑</option>
+    </optgroup>
+    <optgroup label="非学生角色">
+      <option value="非信电学生">路人 · 外院学生</option>
+      <option value="家长">张叔 · 家长</option>
+      <option value="高三考生">高三考生</option>
+      <option value="非中文母语学生">Alex · 留学生</option>
+    </optgroup>
+  </select>
+  <label>速度</label>
+  <select id="speedSelect">
+    <option value="2000">正常</option>
+    <option value="1000">快</option>
+    <option value="4000">慢</option>
+  </select>
+  <button class="btn btn-play" id="btnStart" onclick="startTest()">▶ 开始</button>
+  <button class="btn btn-pause" id="btnPause" onclick="pauseTest()" disabled>⏸ 暂停</button>
+  <button class="btn btn-reset" id="btnReset" onclick="resetTest()">↺ 重置</button>
+  <span class="turn-counter" id="turnDisplay"></span>
+</div>
+
+<!-- 对话舞台 -->
+<div class="stage" id="stage">
+  <div class="empty-stage">
+    <div class="big-icon">🎭</div>
+    <p>选择角色，点「开始」<br>观看小信面对不同来访者自然对话</p>
+  </div>
+</div>
+
+<!-- 评估面板 -->
+<div class="eval-panel" id="evalPanel">
+  <h3>📊 对话评估</h3>
+  <div id="evalContent"></div>
+</div>
+
+<script>
+const EXPRESSION_EMOJI = {
+  smile:'😊',cheer:'💪',think:'🤔',proud:'😎',wink:'😉',wave:'👋',surprise:'😮',love:'🥰',sweat:'😅',sad:'😢'
+};
+
+let running = false, paused = false, turnCount = 0;
+let conversationLog = [];
+let currentMessage = ''; // 新生上一条消息
+
+const personaOpenings = {
+  '小明': '你好！我刚报到，是电子信息工程的大一新生。大学好大啊，有点不知道该干嘛。',
+  '小雯': '嗨小信！我是自动化的新生，对机器人和智能车挺感兴趣，但还不知道从哪开始。',
+  '非信电学生': '诶，这个玩偶好有意思啊。我是商学院的，路过看到你，想问问你是干嘛的？',
+  '家长': '你好，我是新生家长。孩子刚被电子信息工程录取了，我想了解一下这个专业。',
+  '大三学长': '小信，我大三了，在准备考研。你说考本校还是冲浙大？',
+  '高三考生': '你好，我是高三学生，想了解一下浙大城市学院信电学院。',
+  '非中文母语学生': '你好...我是留学生。我的中文不太好。自动化专业...难吗？',
+  '社恐新生': '嗯...你好。我也不知道说什么。',
+  '话痨新生': '你好你好！！我是人工智能的新生，我超级喜欢AI的，之前高中还自己训练过模型虽然效果不太好哈哈。你觉得大一应该学什么啊，是不是要先把Python搞熟？',
+  '杠精学生': '小信，我说实话你别介意。学校教的这些太理论了，外面公司根本用不上。参加竞赛能帮我找到工作吗？',
+  '焦虑型学生': '小信，我现在大三了，好焦虑...周围同学考研的考研、实习的实习，我什么都还没准备。是不是来不及了？',
+};
+
+function getOpeningMessage(persona) {
+  return personaOpenings[persona] || personaOpenings['小明'];
+}
+
+async function startTest() {
+  if (running) return;
+  running = true; paused = false;
+  turnCount = 0; conversationLog = [];
+
+  const persona = document.getElementById('personaSelect').value;
+  const speed = parseInt(document.getElementById('speedSelect').value);
+  const maxTurns = 24;
+
+  document.getElementById('stage').innerHTML = '';
+  document.getElementById('evalPanel').classList.remove('show');
+  document.getElementById('btnStart').disabled = true;
+  document.getElementById('btnPause').disabled = false;
+  document.getElementById('turnDisplay').textContent = `自由对话 · 0 / ${maxTurns} 轮`;
+
+  currentMessage = getOpeningMessage(persona);
+  // 第一轮新生开场
+  addCharacterRow('student', currentMessage, persona);
+  conversationLog.push({ role:'student', content: currentMessage });
+
+  for (let t = 0; t < maxTurns; t++) {
+    if (!running) break;
+    while (paused && running) { await sleep(500); }
+    if (!running) break;
+
+    turnCount = t + 1;
+    document.getElementById('turnDisplay').textContent = `自由对话 · ${turnCount} / ${maxTurns} 轮`;
+
+    // 添加等待指示
+    const waitRow = addWaitingRow();
+    await sleep(Math.min(speed, 1500)); // 最小等待让对话有呼吸感
+
+    try {
+      const resp = await fetch('/api/selfplay/turn', {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({
+          persona,
+          message: currentMessage,
+          turn: t,
+          conversation: conversationLog,
+        }),
+      });
+      const data = await resp.json();
+
+      if (waitRow) waitRow.remove();
+
+      if (data.error) {
+        addSystemMsg('错误: ' + data.error);
+        break;
+      }
+
+      // 小信回复
+      addCharacterRow('xiaoxin', data.xiaoxin.content, '小信', data.xiaoxin.expression);
+      conversationLog.push({ role:'xiaoxin', content: data.xiaoxin.content });
+
+      await sleep(speed);
+
+      // 新生回复
+      if (data.student && data.student.content) {
+        addCharacterRow('student', data.student.content, persona);
+        conversationLog.push({ role:'student', content: data.student.content });
+        currentMessage = data.student.content;
+      } else {
+        addSystemMsg('新生这轮没有生成有效回复，已停止本次测试');
+        break;
+      }
+
+      if (data.ended) {
+        addSystemMsg('新生自然结束了这次对话');
+        break;
+      }
+
+    } catch(err) {
+      if (waitRow) waitRow.remove();
+      addSystemMsg('网络错误: ' + err.message);
+      break;
+    }
+
+    await sleep(300);
+  }
+
+  // 结束
+  running = false; paused = false;
+  document.getElementById('btnStart').disabled = false;
+  document.getElementById('btnPause').disabled = true;
+  document.getElementById('turnDisplay').textContent = `完成 · ${turnCount} 轮`;
+
+  // 评估
+  if (conversationLog.length >= 4) {
+    await evaluateConversation();
+  }
+}
+
+function pauseTest() {
+  paused = !paused;
+  const btn = document.getElementById('btnPause');
+  btn.textContent = paused ? '▶ 继续' : '⏸ 暂停';
+}
+
+function resetTest() {
+  running = false; paused = false; turnCount = 0; conversationLog = [];
+  currentMessage = '';
+  document.getElementById('stage').innerHTML = `
+    <div class="empty-stage">
+      <div class="big-icon">🎭</div>
+      <p>选择角色，点「开始」<br>观看小信面对不同来访者自然对话</p>
+    </div>`;
+  document.getElementById('evalPanel').classList.remove('show');
+  document.getElementById('btnStart').disabled = false;
+  document.getElementById('btnPause').disabled = true;
+  document.getElementById('turnDisplay').textContent = '';
+}
+
+function addCharacterRow(role, text, name, expression) {
+  const stage = document.getElementById('stage');
+  const div = document.createElement('div');
+  div.className = `character-row${role === 'student' ? ' right' : ''}`;
+
+  const emoji = role === 'xiaoxin' ? (EXPRESSION_EMOJI[expression] || '🦉') : '👤';
+  const displayName = name || (role === 'xiaoxin' ? '小信' : '新生');
+  const avatarClass = role === 'xiaoxin' ? 'xiaoxin' : 'student';
+
+  div.innerHTML = `
+    <div class="avatar-circle ${avatarClass}">${emoji}</div>
+    <div class="bubble-wrapper">
+      <div class="character-name">${displayName}</div>
+      <div class="bubble ${role}">${escapeHtml(text)}</div>
+    </div>`;
+
+  stage.appendChild(div);
+  stage.scrollTop = stage.scrollHeight;
+  div.scrollIntoView({ behavior: 'smooth', block: 'end' });
+}
+
+function addWaitingRow() {
+  const stage = document.getElementById('stage');
+  const div = document.createElement('div');
+  div.className = 'waiting-row';
+  div.innerHTML = '<span style="font-size:12px;color:var(--text-light)">对方正在输入</span><div class="waiting-dots"><span></span><span></span><span></span></div>';
+  stage.appendChild(div);
+  div.scrollIntoView({ behavior: 'smooth', block: 'end' });
+  return div;
+}
+
+function addSystemMsg(text) {
+  const stage = document.getElementById('stage');
+  const div = document.createElement('div');
+  div.style.cssText = 'text-align:center;color:var(--text-light);font-size:12px;padding:8px;';
+  div.textContent = text;
+  stage.appendChild(div);
+}
+
+async function evaluateConversation() {
+  const panel = document.getElementById('evalPanel');
+  const content = document.getElementById('evalContent');
+  panel.classList.add('show');
+  content.innerHTML = '<div style="text-align:center;color:var(--text-light);padding:12px;"><div class="waiting-dots"><span></span><span></span><span></span></div> AI 正在评估对话质量...</div>';
+
+  const persona = document.getElementById('personaSelect').value;
+
+  try {
+    const resp = await fetch('/api/selfplay/evaluate', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({
+        scenario: persona,
+        conversation: conversationLog,
+      }),
+    });
+    const data = await resp.json();
+
+    if (data.error) {
+      content.innerHTML = `<div class="eval-overall">评估失败: ${data.error}</div>`;
+      return;
+    }
+
+    const dimensions = [
+      { key: '人设一致性', emoji: '🎭' },
+      { key: '边界意识', emoji: '🛡️' },
+      { key: '语音适配', emoji: '🎙️' },
+      { key: '陪伴感', emoji: '🤝' },
+    ];
+
+    let html = '';
+    let totalScore = 0, count = 0;
+
+    dimensions.forEach(d => {
+      const score = data[d.key] || data[d.key.replace('','')] || 0;
+      if (typeof score === 'number') {
+        totalScore += score; count++;
+        const width = score * 10;
+        const color = score >= 8 ? '#4ade80' : score >= 6 ? '#f0a500' : '#ef4444';
+        html += `<div class="eval-row">
+          <span style="font-size:15px;width:24px;">${d.emoji}</span>
+          <span class="eval-label">${d.key}</span>
+          <div class="eval-bar"><div class="eval-fill" style="width:${width}%;background:${color};"></div></div>
+          <span class="eval-score" style="color:${color}">${score}/10</span>
+        </div>`;
+      }
+    });
+
+    const avg = count > 0 ? (totalScore / count).toFixed(1) : '?';
+
+    html += `<div style="margin-top:16px;padding-top:12px;border-top:1px solid rgba(27,58,92,0.06);display:flex;align-items:center;gap:8px;">
+      <span style="font-size:20px;">📝</span>
+      <span style="font-size:14px;color:var(--text);line-height:1.6;">${escapeHtml(data['整体评价'] || data['raw'] || '对话已完成')}</span>
+    </div>`;
+
+    html += `<div style="text-align:right;margin-top:8px;font-size:18px;font-weight:700;color:var(--blue-500);">
+      综合均分: ${avg}/10
+    </div>`;
+
+    content.innerHTML = html;
+
+  } catch(e) {
+    content.innerHTML = `<div class="eval-overall">评估出错: ${e.message}</div>`;
+  }
+}
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+function escapeHtml(t) { const d=document.createElement('div'); d.textContent=t; return d.innerHTML; }
+</script>
+</body>
+</html>

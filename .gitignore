@@ -1,0 +1,27 @@
+# 敏感文件 - API Key
+web/.env
+
+# 运行时数据 - 记忆/成长/会话记录
+skills/xiaoxin-senior/data/
+
+# 测试结果存档
+web/test_results/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+venv/
+.venv/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# 临时文件
+*.log
+tmp/
