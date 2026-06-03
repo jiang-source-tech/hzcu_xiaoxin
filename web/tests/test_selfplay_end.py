@@ -128,6 +128,35 @@ class SelfplayEndTest(unittest.TestCase):
         self.assertEqual(payload["陪伴感"], 10)
         self.assertEqual(payload["整体评价"], "挺自然的一段对话")
 
+    def test_selfplay_evaluate_retries_empty_model_response(self):
+        fake_client = _FakeClient([
+            "",
+            "人设=7\n边界=8\n语音=8\n陪伴=9\n总评=第二次评估正常",
+        ])
+
+        with patch.object(app_module, "client", fake_client):
+            response = app_module.app.test_client().post(
+                "/api/selfplay/evaluate",
+                json={
+                    "scenario": "小明",
+                    "conversation": [
+                        {"role": "student", "content": "你好，小信。"},
+                        {"role": "xiaoxin", "content": "嗨，我在。"},
+                        {"role": "student", "content": "我有点担心高数。"},
+                        {"role": "xiaoxin", "content": "这个担心很正常，我们慢慢拆。"},
+                    ],
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertEqual(payload["人设一致性"], 7)
+        self.assertEqual(payload["边界意识"], 8)
+        self.assertEqual(payload["语音适配"], 8)
+        self.assertEqual(payload["陪伴感"], 9)
+        self.assertEqual(payload["整体评价"], "第二次评估正常")
+        self.assertEqual(len(fake_client.calls), 2)
+
     def test_non_xindian_persona_prompt_does_not_force_freshman_identity(self):
         fake_client = _FakeClient([
             "嗨，你好呀。[smile]",
@@ -180,6 +209,34 @@ class SelfplayEndTest(unittest.TestCase):
         self.assertTrue(payload["student"]["content"])
         self.assertIn("商学院", payload["student"]["content"])
         self.assertNotIn("电子信息工程", payload["student"]["content"])
+
+    def test_fragmented_xiaoxin_reply_retries_before_student_turn(self):
+        fake_client = _FakeClient([
+            "翻",
+            "是啊，高数一开始确实像突然加速。先别急，把课本例题和作业题一类一类拆开，慢慢会顺起来的。[think]",
+            "嗯嗯，那我先从例题开始补起来。",
+        ])
+
+        with patch.object(app_module, "client", fake_client), \
+             patch.object(app_module, "build_system_prompt", return_value="你是小信。"):
+            response = app_module.app.test_client().post(
+                "/api/selfplay/turn",
+                json={
+                    "persona": "小明",
+                    "message": "啊C语言和高数有点慌，听说大学高数难度翻倍。",
+                    "turn": 0,
+                    "conversation": [
+                        {"role": "student", "content": "啊C语言和高数有点慌，听说大学高数难度翻倍。"},
+                    ],
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertNotEqual(payload["xiaoxin"]["content"], "翻")
+        self.assertIn("高数", payload["xiaoxin"]["content"])
+        self.assertEqual(len(fake_client.calls), 3)
+        self.assertIn("不完整", fake_client.calls[1]["messages"][-1]["content"])
 
 
 if __name__ == "__main__":

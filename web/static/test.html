@@ -299,6 +299,8 @@ async function startTest() {
   // 评估
   if (conversationLog.length >= 4) {
     await evaluateConversation();
+  } else {
+    showEvaluationSkipped();
   }
 }
 
@@ -359,6 +361,13 @@ function addSystemMsg(text) {
   div.style.cssText = 'text-align:center;color:var(--text-light);font-size:12px;padding:8px;';
   div.textContent = text;
   stage.appendChild(div);
+}
+
+function showEvaluationSkipped() {
+  const panel = document.getElementById('evalPanel');
+  const content = document.getElementById('evalContent');
+  panel.classList.add('show');
+  content.innerHTML = '<div class="eval-overall">对话轮次太少，暂时不生成评分。再多聊两句后会自动评估。</div>';
 }
 
 async function evaluateConversation() {

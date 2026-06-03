@@ -29,6 +29,13 @@ class SelfplayLayoutTest(unittest.TestCase):
             r"\.bubble\.student\s*\{[^}]*min-width:\s*9em",
         )
 
+    def test_short_conversations_show_evaluation_skip_reason(self):
+        self.assertIn("showEvaluationSkipped", self.html)
+        self.assertRegex(
+            self.html,
+            r"else\s*\{\s*showEvaluationSkipped\(\)",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

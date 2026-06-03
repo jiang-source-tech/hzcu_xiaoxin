@@ -204,6 +204,20 @@ def fallback_student_reply(persona_name: str) -> str:
     return fallbacks.get(persona_name, "嗯嗯，我懂你的意思。那我接着听你说。")
 
 
+def is_fragmented_xiaoxin_reply(text: str) -> bool:
+    """判断小信回复是否明显不完整，避免自对话把单字碎片继续传下去。"""
+    clean, _ = parse_expression(text or "")
+    meaningful = re.findall(r"[0-9A-Za-z\u4e00-\u9fff]", clean)
+    return len(meaningful) < 4
+
+
+def fallback_xiaoxin_reply(user_msg: str) -> str:
+    """小信模型连续输出碎片时的兜底回复。"""
+    if any(keyword in user_msg for keyword in ("高数", "C语言", "课程", "难")):
+        return "嗯，我刚才有点卡住了。你这个担心很正常，先把最慌的点拆小一点：高数跟着例题走，C语言多敲几遍，都会慢慢顺起来。[think]"
+    return "嗯，我刚才有点卡住了。你这句话我听懂了，咱们先别急，把最关键的地方拆小一点慢慢聊。[think]"
+
+
 # ─── 记忆自动保存（后端检测）─────────────────────────────────────────────
 
 def auto_save_memory(user_id: str, user_msg: str, reply: str):
@@ -501,8 +515,19 @@ def selfplay_turn():
         xr = client.chat.completions.create(
             model=MODEL, messages=xiaoxin_messages, temperature=0.8, max_tokens=200)
         xiaoxin_reply = xr.choices[0].message.content.strip()
+        if is_fragmented_xiaoxin_reply(xiaoxin_reply):
+            retry_messages = [
+                *xiaoxin_messages,
+                {"role": "system", "content": "上一条回复不完整，请重新用小信的口吻完整回答。输出2-4句，可以带一个表情标记。"},
+            ]
+            xr = client.chat.completions.create(
+                model=MODEL, messages=retry_messages, temperature=0.6, max_tokens=240)
+            xiaoxin_reply = xr.choices[0].message.content.strip()
     except Exception as e:
         return jsonify({"error": f"小信 API 错误: {e}"}), 500
+
+    if is_fragmented_xiaoxin_reply(xiaoxin_reply):
+        xiaoxin_reply = fallback_xiaoxin_reply(user_msg)
 
     clean, exp = parse_expression(xiaoxin_reply)
 
@@ -570,12 +595,25 @@ def selfplay_evaluate():
 总评=一句话评价"""
 
     try:
-        resp = client.chat.completions.create(
-            model=MODEL,
-            messages=[{"role": "user", "content": eval_prompt}],
-            temperature=0.3, max_tokens=200,
-        )
-        text = resp.choices[0].message.content.strip()
+        text = ""
+        messages = [{"role": "user", "content": eval_prompt}]
+        for attempt in range(2):
+            resp = client.chat.completions.create(
+                model=MODEL,
+                messages=messages,
+                temperature=0.3, max_tokens=200,
+            )
+            text = resp.choices[0].message.content.strip()
+            if text:
+                break
+            messages = [
+                *messages,
+                {"role": "user", "content": "刚才评估结果为空。请严格按 人设=8 这种格式重新输出5行。"},
+            ]
+
+        if not text:
+            return jsonify({"error": "评估模型返回为空，请稍后重试"}), 502
+
         print(f"[EVAL] {text[:200]}")
 
         result = {}
