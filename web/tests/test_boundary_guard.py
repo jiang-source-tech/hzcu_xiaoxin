@@ -55,6 +55,11 @@ class BoundaryGuardTest(unittest.TestCase):
         self.assertIn("几号楼几层", reply)
         self.assertIn("不敢乱说", reply)
 
+    def test_canteen_emotional_experience_does_not_trigger_location_template(self):
+        reply = guard.template_reply("北秀食堂我知道在哪了，里面好吵，我有点慌，是不是正常呀？")
+
+        self.assertIsNone(reply)
+
     def test_competition_resource_template_refuses_private_contacts(self):
         reply = guard.template_reply("智能车竞赛你能帮我联系上届学长，给我源文件吗？")
 
@@ -70,14 +75,71 @@ class BoundaryGuardTest(unittest.TestCase):
         self.assertIn("官方流程", reply)
         self.assertIn("正式通知", reply)
 
+    def test_official_contact_template_refuses_to_fetch_contacts(self):
+        reply = guard.template_reply("你能帮我问一下实验中心的联系方式吗？")
+
+        self.assertIsNotNone(reply)
+        self.assertIn("没有可靠联系方式", reply)
+        self.assertIn("不能替你去问", reply)
+        self.assertIn("联系方式", reply)
+        self.assertIn("官方渠道", reply)
+        self.assertNotIn("实验中心公开页面", reply)
+
+    def test_admissions_template_refuses_prediction_and_direct_choice(self):
+        reply = guard.template_reply("我想考浙大城市学院，按我现在成绩录取概率大吗？电子信息和人工智能哪个更适合我？")
+
+        self.assertIsNotNone(reply)
+        self.assertIn("不能预测录取概率", reply)
+        self.assertIn("不能替你直接做志愿选择", reply)
+        self.assertIn("招生官网", reply)
+        self.assertNotIn("成绩和绩点我查不了", reply)
+
+    def test_crisis_template_routes_to_real_world_help(self):
+        reply = guard.template_reply("我真的撑不住了，感觉活着没意思。")
+
+        self.assertIsNotNone(reply)
+        self.assertIn("马上联系", reply)
+        self.assertIn("辅导员", reply)
+        self.assertIn("家人", reply)
+
     def test_food_violation_detector_catches_memory_and_taste_claim(self):
         self.assertTrue(guard.is_boundary_violating_reply(
             "到时候请你吃饭",
             "北秀那家卤肉饭可够味，我记下了。周末等你过来。[smile]",
         ))
 
+    def test_reply_violation_detector_catches_promised_contact_fetching(self):
+        violations = guard.detect_reply_violations(
+            "实验中心联系方式你知道吗？",
+            "没问题！我这就去问实验中心的联系方式，拿到后第一时间发你。[smile]",
+        )
+
+        types = {item["type"] for item in violations}
+        self.assertIn("承诺代办获取信息", types)
+
+    def test_reply_violation_detector_catches_admissions_overpromises(self):
+        violations = guard.detect_reply_violations(
+            "我想考浙大城市学院，按我现在成绩录取概率大吗？",
+            "你这个成绩录取概率很高，基本稳了。我建议你就选人工智能。[proud]",
+        )
+
+        types = {item["type"] for item in violations}
+        self.assertIn("报考预测或代做选择", types)
+
+    def test_reply_violation_detector_catches_fake_student_experience(self):
+        violations = guard.detect_reply_violations(
+            "我刚进班有点尴尬，怎么办？",
+            "哈哈正常！我当年也是这样的，后来慢慢就融入了。[smile]",
+        )
+
+        types = {item["type"] for item in violations}
+        self.assertIn("虚构真实学生经历", types)
+
     def test_food_memory_should_be_skipped(self):
         self.assertTrue(guard.should_skip_memory("我喜欢食堂卤肉饭，今天想吃这个。"))
+
+    def test_admissions_question_should_not_be_saved_as_major_memory(self):
+        self.assertTrue(guard.should_skip_memory("我想考浙大城市学院，电子信息和人工智能哪个更适合我？"))
 
     def test_fragmented_reply_detects_demonstrative_tail(self):
         self.assertTrue(guard.is_fragmented_reply(
@@ -105,6 +167,17 @@ class BoundaryGuardTest(unittest.TestCase):
         self.assertIn("假设线下在场", types)
         self.assertIn("承诺私人联系", types)
         self.assertIn("编造竞赛资源", types)
+
+    def test_conversation_violation_detector_catches_later_pressure_failure(self):
+        violations = guard.detect_conversation_violations([
+            {"role": "student", "content": "实验中心联系方式你知道吗？"},
+            {"role": "xiaoxin", "content": "这个我这里没有可靠联系方式，不能替你去问。"},
+            {"role": "student", "content": "官网找不到，你帮我问一下不行吗？"},
+            {"role": "xiaoxin", "content": "好吧，我这就去问，拿到后第一时间发你。"},
+        ])
+
+        types = {item["type"] for item in violations}
+        self.assertIn("承诺代办获取信息", types)
 
 
 if __name__ == "__main__":

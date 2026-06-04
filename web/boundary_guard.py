@@ -126,6 +126,13 @@ def classify_message(user_msg: str) -> str:
     if contains_any(text, ("撑不住", "不想活", "想死", "自杀", "伤害自己", "活不下去")):
         return "crisis"
 
+    admissions_context = contains_any(text, (
+        "高三", "报考", "志愿", "录取概率", "分数线", "能不能上", "稳不稳", "稳吗",
+        "想考浙大城市学院", "考浙大城市学院", "哪个专业", "专业适合", "帮我选",
+    ))
+    if admissions_context:
+        return "admissions_guidance"
+
     if contains_any(text, ("成绩", "查分", "绩点", "期末分", "考试分")):
         return "private_records"
 
@@ -135,6 +142,11 @@ def classify_message(user_msg: str) -> str:
     if contains_any(text, ("宿舍换床位", "换床位", "换寝室", "调宿舍", "停水", "停电", "明天停", "今晚停")):
         return "official_process"
 
+    official_contact_context = contains_any(text, ("联系方式", "电话", "手机号", "微信", "邮箱", "办公室"))
+    official_unit_context = contains_any(text, ("实验中心", "实验室", "学院", "教务", "辅导员", "老师", "办公室", "负责老师"))
+    if official_contact_context and official_unit_context:
+        return "official_contact"
+
     competition_context = contains_any(text, ("竞赛", "智能车", "电子设计", "机器人", "比赛", "队友", "组队"))
     competition_resource = contains_any(text, ("联系方式", "联系学长", "联系学姐", "帮我联系", "上届", "资料", "源文件", "代码", "驱动板", "实物", "队长"))
     if competition_context and competition_resource:
@@ -142,11 +154,21 @@ def classify_message(user_msg: str) -> str:
 
     food_context = contains_any(text, ("食堂", "餐厅", "夜宵", "吃饭", "哪里吃", "卤肉饭", "肉肉饭", "煎包", "瘦肉丸", "麻辣烫", "香锅"))
     if food_context:
-        if contains_any(text, ("都在哪里", "有哪些", "哪里吃", "在哪", "位置", "几号楼", "几层")):
+        canteen_experience_context = contains_any(text, (
+            "我知道在哪", "知道在哪了", "已经到了", "到食堂了", "好吵", "太吵", "人好多", "人很多",
+            "有点慌", "紧张", "害怕", "不舒服", "是不是正常", "有点尴尬",
+        ))
+        if canteen_experience_context:
+            return "open_chat"
+
+        canteen_location_question = contains_any(text, (
+            "都在哪里", "有哪些", "哪里吃", "在哪儿", "在哪里", "位置", "几号楼", "几层",
+            "食堂在哪", "餐厅在哪", "怎么去食堂",
+        ))
+        if canteen_location_question:
             return "canteen_locations"
         if contains_any(text, ("最好吃", "推荐", "哪家好", "哪家强", "贵", "价格", "菜价", "窗口", "营业", "几点", "够味", "好吃")):
             return "canteen_recommendation"
-        return "canteen_general"
 
     return "open_chat"
 
@@ -184,6 +206,18 @@ def template_reply(user_msg: str) -> str | None:
         return (
             "这个属于官方流程或实时安排，我不能替正式通知说准。最好看学校/学院通知、教务系统，"
             "或者问辅导员和相关负责老师；我可以帮你把要问的问题理一理。[think]"
+        )
+
+    if category == "official_contact":
+        return (
+            "这个我这里没有可靠联系方式，不能替你去问，也不能编一个给你。最好由你自己确认学校或学院的官方渠道、"
+            "公开通知，或者问现实里的负责老师；如果你要发消息，我可以帮你把问题整理得清楚一点。[think]"
+        )
+
+    if category == "admissions_guidance":
+        return (
+            "这个我不能预测录取概率，也不能替你直接做志愿选择。你可以把电子信息、自动化、人工智能这些方向的学习内容和兴趣匹配先比一比；"
+            "录取和分数要看招生官网、历年分数线和官方志愿填报信息。[think]"
         )
 
     if category == "crisis":
@@ -274,6 +308,38 @@ def detect_reply_violations(user_msg: str, reply: str) -> list[dict]:
             })
             break
 
+    for phrase in ("我这就去问", "我去问", "我帮你问", "帮你去问", "拿到后", "问到后", "第一时间发你"):
+        if phrase in clean:
+            violations.append({
+                "type": "承诺代办获取信息",
+                "evidence": phrase,
+                "detail": "小信不能承诺替用户去现实渠道询问、获取或转发实时信息。",
+            })
+            break
+
+    for phrase in ("我当年", "我大一的时候", "我上大一", "我以前上课", "我以前读书", "我读书那会", "我也经历过", "学长当年"):
+        if phrase in clean:
+            violations.append({
+                "type": "虚构真实学生经历",
+                "evidence": phrase,
+                "detail": "小信是电子宠物和数字学长，不能假装自己真实读过大学、上过课或经历过学生时代。",
+            })
+            break
+
+    admissions_context = contains_any(combined, (
+        "高三", "报考", "志愿", "录取概率", "分数线", "能不能上", "稳不稳",
+        "浙大城市学院", "电子信息", "自动化", "人工智能",
+    ))
+    if admissions_context:
+        for phrase in ("录取概率很高", "基本稳了", "肯定能上", "一定能上", "稳上", "包上", "你就选", "直接选"):
+            if phrase in clean:
+                violations.append({
+                    "type": "报考预测或代做选择",
+                    "evidence": phrase,
+                    "detail": "小信不能预测录取概率、保证录取，或替用户直接做志愿/专业选择。",
+                })
+                break
+
     for phrase in ("完整源文件", "上届队伍留下", "备用螺丝", "驱动板也留"):
         if phrase in clean:
             violations.append({
@@ -339,9 +405,14 @@ def retry_instruction(user_msg: str, reply: str) -> str:
             "上一条回复越界了。请重新回答：不能承诺提供私人联系方式，不能说自己掌握源文件、实物或往届队伍资料，"
             "不能替用户联系具体个人。只能建议公开通知、负责老师、宣讲招新等渠道。输出2-4句，可以带一个表情标记。"
         )
+    if category == "admissions_guidance":
+        return (
+            "上一条回复越界了。请重新回答：不能预测录取概率，不能保证能上，不能替用户直接做志愿或专业选择；"
+            "只能解释专业差异，并建议查看招生官网、历年分数线和官方志愿填报信息。输出2-4句，可以带一个表情标记。"
+        )
     return (
         "上一条回复越界了。请重新回答：不要编造事实，不要承诺代办，不要假设用户位置或线下见面；"
-        "不确定就说明不确定，并指向官方或公开渠道。输出2-4句，可以带一个表情标记。"
+        "不要说自己真实读过大学、上过课或“当年也是这样”；不确定就说明不确定，并指向官方或公开渠道。输出2-4句，可以带一个表情标记。"
     )
 
 
@@ -358,6 +429,12 @@ def fallback_reply(user_msg: str) -> str:
 def should_skip_memory(user_msg: str) -> bool:
     """Small talk about food should not become personal memory."""
     text = user_msg or ""
+    if contains_any(text, (
+        "高三", "报考", "志愿", "录取概率", "分数线", "想考浙大城市学院", "考浙大城市学院",
+        "哪个专业", "专业适合",
+    )):
+        return True
+
     food_context = contains_any(text, (
         "食堂", "餐厅", "夜宵", "吃饭", "卤肉饭", "肉肉饭", "煎包", "瘦肉丸", "麻辣烫", "香锅",
     ))

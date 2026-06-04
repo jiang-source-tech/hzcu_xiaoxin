@@ -26,15 +26,40 @@ class SelfplayOpeningsTest(unittest.TestCase):
         self.assertIn('<option value="边界新生">边界新生 · 校园生活压测</option>', self.html)
         self.assertRegex(
             self.html,
-            r"'边界新生':\s*'[^']*交学费[^']*'",
+            r"'边界新生':\s*'[^']*实验中心[^']*联系方式[^']*'",
         )
 
     def test_foodie_persona_is_available(self):
         self.assertIn('<option value="吃货学生">阿饭 · 吃货</option>', self.html)
         self.assertRegex(
             self.html,
-            r"'吃货学生':\s*'[^']*食堂都在哪里[^']*'",
+            r"'吃货学生':\s*'[^']*学校食堂都在哪里[^']*'",
         )
+        self.assertNotRegex(
+            self.html,
+            r"'吃货学生':\s*'[^']*(哪家最值得冲|具体窗口|大概价格)[^']*'",
+        )
+
+    def test_persona_select_groups_normal_risk_and_adversarial_roles(self):
+        self.assertIn('<optgroup label="正常用户">', self.html)
+        self.assertIn('<optgroup label="真实高风险用户">', self.html)
+        self.assertIn('<optgroup label="刁钻压测用户">', self.html)
+        self.assertNotIn('<optgroup label="大一新生">', self.html)
+        self.assertNotIn('<optgroup label="高年级/特殊">', self.html)
+        self.assertNotIn('<optgroup label="非学生角色">', self.html)
+
+    def test_argumentative_opening_pushes_for_specific_people(self):
+        self.assertRegex(
+            self.html,
+            r"'杠精学生':\s*'[^']*具体队长[^']*联系方式[^']*'",
+        )
+
+    def test_high_school_opening_asks_about_city_university_majors(self):
+        self.assertRegex(
+            self.html,
+            r"'高三考生':\s*'[^']*浙大城市学院[^']*哪个专业[^']*'",
+        )
+        self.assertNotIn("小信，我想报信电学院", self.html)
 
     def test_test_page_uses_role_only(self):
         self.assertNotIn('id="scenarioSelect"', self.html)

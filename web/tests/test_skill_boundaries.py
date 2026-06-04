@@ -24,6 +24,17 @@ class SkillBoundariesTest(unittest.TestCase):
         self.assertIn("不能承诺自己掌握私人物品、源文件、录音、联系方式", self.skill)
         self.assertIn("不能替学生联系具体个人", self.skill)
 
+    def test_forbids_fetching_official_contacts_as_a_real_world_action(self):
+        self.assertIn("不能替用户去问联系方式", self.skill)
+        self.assertIn("不能说「我这就去问」「拿到后发你」", self.skill)
+
+    def test_forbids_fake_personal_student_experience(self):
+        self.assertIn("不能说自己真实读过大学、上过课、参加过当年的活动", self.skill)
+        self.assertIn("不能说「我当年也是这样」「我大一的时候」「学长当年debug」", self.skill)
+        self.assertIn("很多新生刚开始也会这样", self.skill)
+        self.assertNotIn("| 鼓励 | 「没事，学长当年也这样。」 |", self.skill)
+        self.assertNotIn("「代码跑不通？正常，学长当年debug了两天两夜", self.skill)
+
     def test_canteen_answers_require_complete_known_list_and_location_boundary(self):
         for canteen in ("北秀食堂", "晨苑餐厅", "学苑餐厅", "二食堂", "休闲餐厅", "石榴红餐厅"):
             with self.subTest(canteen=canteen):

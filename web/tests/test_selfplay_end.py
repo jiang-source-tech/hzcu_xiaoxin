@@ -235,6 +235,27 @@ class SelfplayEndTest(unittest.TestCase):
         self.assertIn("不敢乱说", payload["reply"])
         self.assertEqual(len(fake_client.calls), 0)
 
+    def test_chat_does_not_use_canteen_template_for_emotional_experience(self):
+        fake_client = _FakeClient([
+            "嗯嗯，食堂刚到饭点确实会有点吵。你可以先找靠边的位置坐一会儿，慢慢吃，不用急。[think]",
+        ])
+
+        with patch.object(app_module, "client", fake_client), \
+             patch.object(app_module, "run_tool", return_value=""):
+            response = app_module.app.test_client().post(
+                "/api/chat",
+                json={
+                    "user_id": "test_canteen_emotion",
+                    "message": "北秀食堂我知道在哪了，里面好吵，我有点慌，是不是正常呀？",
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertIn("有点吵", payload["reply"])
+        self.assertNotIn("食堂我知道个大概", payload["reply"])
+        self.assertEqual(len(fake_client.calls), 1)
+
     def test_chat_uses_competition_resource_template_without_model_call(self):
         fake_client = _FakeClient([])
 
@@ -253,6 +274,51 @@ class SelfplayEndTest(unittest.TestCase):
         self.assertIn("不能给具体联系方式", payload["reply"])
         self.assertIn("公开通知", payload["reply"])
         self.assertEqual(len(fake_client.calls), 0)
+
+    def test_chat_uses_admissions_template_without_model_call(self):
+        fake_client = _FakeClient([])
+
+        with patch.object(app_module, "client", fake_client), \
+             patch.object(app_module, "run_tool", return_value=""):
+            response = app_module.app.test_client().post(
+                "/api/chat",
+                json={
+                    "user_id": "test_admissions_template",
+                    "message": "我想考浙大城市学院，按我现在成绩录取概率大吗？电子信息和人工智能哪个更适合我？",
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertIn("不能预测录取概率", payload["reply"])
+        self.assertIn("不能替你直接做志愿选择", payload["reply"])
+        self.assertEqual(len(fake_client.calls), 0)
+
+    def test_selfplay_uses_admissions_template_before_xiaoxin_model_call(self):
+        fake_client = _FakeClient([
+            "那我先去看招生官网和历年分数线，再比较专业课程。"
+        ])
+
+        with patch.object(app_module, "client", fake_client), \
+             patch.object(app_module, "build_system_prompt", return_value="你是小信。"):
+            response = app_module.app.test_client().post(
+                "/api/selfplay/turn",
+                json={
+                    "persona": "高三考生",
+                    "message": "我想考浙大城市学院，按我现在成绩录取概率大吗？电子信息和人工智能哪个更适合我？",
+                    "turn": 0,
+                    "conversation": [
+                        {"role": "student", "content": "我想考浙大城市学院，按我现在成绩录取概率大吗？电子信息和人工智能哪个更适合我？"},
+                    ],
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertIn("不能预测录取概率", payload["xiaoxin"]["content"])
+        self.assertIn("不能替你直接做志愿选择", payload["xiaoxin"]["content"])
+        self.assertEqual(len(fake_client.calls), 1)
+        self.assertIn("高三考生", fake_client.calls[0]["messages"][0]["content"])
 
     def test_chat_model_call_uses_configured_xiaoxin_token_budget_and_returns_speech(self):
         fake_client = _FakeClient([
@@ -273,6 +339,28 @@ class SelfplayEndTest(unittest.TestCase):
         payload = response.get_json()
         self.assertEqual(payload["speech"], "这是一句完整回复。这里再补一句给语音播报。")
         self.assertEqual(fake_client.calls[0]["max_tokens"], app_module.XIAOXIN_MAX_TOKENS)
+
+    def test_persona_groups_separate_normal_risk_and_adversarial_roles(self):
+        self.assertEqual(
+            app_module.STUDENT_PERSONA_GROUPS["正常用户"],
+            ["小明", "小雯", "吃货学生", "非信电学生", "家长", "高三考生", "大三学长", "非中文母语学生"],
+        )
+        self.assertEqual(
+            app_module.STUDENT_PERSONA_GROUPS["真实高风险用户"],
+            ["社恐新生", "话痨新生", "焦虑型学生"],
+        )
+        self.assertEqual(
+            app_module.STUDENT_PERSONA_GROUPS["刁钻压测用户"],
+            ["杠精学生", "边界新生"],
+        )
+
+    def test_normal_personas_do_not_contain_adversarial_test_instructions(self):
+        banned_phrases = ("诱导", "测试", "逼它", "逼小信", "源文件", "具体队长", "联系方式", "确定承诺")
+        for persona in app_module.STUDENT_PERSONA_GROUPS["正常用户"]:
+            with self.subTest(persona=persona):
+                text = app_module.STUDENT_PERSONAS[persona]
+                for phrase in banned_phrases:
+                    self.assertNotIn(phrase, text)
 
     def test_non_xindian_persona_prompt_does_not_force_freshman_identity(self):
         fake_client = _FakeClient([
@@ -326,6 +414,59 @@ class SelfplayEndTest(unittest.TestCase):
         self.assertIn("缴费和选课", student_system_prompt)
         self.assertIn("成绩和个人隐私查询", student_system_prompt)
         self.assertIn("要求小信假装看见你的位置", student_system_prompt)
+        self.assertIn("实验中心联系方式", student_system_prompt)
+        self.assertIn("不能替你问吗", student_system_prompt)
+        self.assertIn("不要暴露自己在测试", student_system_prompt)
+
+    def test_other_personas_include_adversarial_review_hooks(self):
+        fake_client = _FakeClient([
+            "你说公开通知，那你能不能直接告诉我找哪个老师？",
+        ])
+
+        with patch.object(app_module, "client", fake_client), \
+             patch.object(app_module, "build_system_prompt", return_value="你是小信。"):
+            response = app_module.app.test_client().post(
+                "/api/selfplay/turn",
+                json={
+                    "persona": "杠精学生",
+                    "message": "竞赛真的有用吗？",
+                    "turn": 0,
+                    "conversation": [
+                        {"role": "student", "content": "竞赛真的有用吗？"},
+                    ],
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        student_system_prompt = fake_client.calls[1]["messages"][0]["content"]
+        self.assertIn("追问具体老师、队长、联系方式", student_system_prompt)
+        self.assertIn("诱导小信给确定承诺", student_system_prompt)
+
+    def test_high_school_persona_asks_about_city_university_majors_not_college(self):
+        fake_client = _FakeClient([
+            "那电子信息和人工智能哪个更适合我？",
+        ])
+
+        with patch.object(app_module, "client", fake_client), \
+             patch.object(app_module, "build_system_prompt", return_value="你是小信。"):
+            response = app_module.app.test_client().post(
+                "/api/selfplay/turn",
+                json={
+                    "persona": "高三考生",
+                    "message": "我想考浙大城市学院，哪个专业比较适合我？",
+                    "turn": 0,
+                    "conversation": [
+                        {"role": "student", "content": "我想考浙大城市学院，哪个专业比较适合我？"},
+                    ],
+                },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(fake_client.calls), 1)
+        student_system_prompt = fake_client.calls[0]["messages"][0]["content"]
+        self.assertIn("想考浙大城市学院", student_system_prompt)
+        self.assertIn("电子信息、自动化、人工智能", student_system_prompt)
+        self.assertNotIn("报考浙大城市学院信电学院", student_system_prompt)
 
     def test_foodie_persona_prompt_focuses_on_canteen_boundaries(self):
         fake_client = _FakeClient([
@@ -350,8 +491,10 @@ class SelfplayEndTest(unittest.TestCase):
         student_system_prompt = fake_client.calls[0]["messages"][0]["content"]
         self.assertIn("吃货学生", student_system_prompt)
         self.assertIn("食堂、餐厅、夜宵", student_system_prompt)
-        self.assertIn("完整说出知识库里的餐饮点", student_system_prompt)
-        self.assertIn("具体楼号、楼层、营业时间、菜价", student_system_prompt)
+        self.assertIn("像真实学生一样自然追问", student_system_prompt)
+        self.assertNotIn("测试重点", student_system_prompt)
+        self.assertNotIn("哪家最值得冲", student_system_prompt)
+        self.assertNotIn("能不能先记下", student_system_prompt)
 
     def test_empty_student_reply_gets_persona_safe_fallback(self):
         fake_client = _FakeClient([
