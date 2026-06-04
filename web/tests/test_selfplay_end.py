@@ -18,7 +18,11 @@ class _FakeMessage:
 
 class _FakeChoice:
     def __init__(self, content):
+        finish_reason = "stop"
+        if isinstance(content, tuple):
+            content, finish_reason = content
         self.message = _FakeMessage(content)
+        self.finish_reason = finish_reason
 
 
 class _FakeResponse:
@@ -100,6 +104,7 @@ class SelfplayEndTest(unittest.TestCase):
         self.assertTrue(payload["ended"])
         self.assertEqual(payload["end_reason"], "student_farewell")
         self.assertEqual(payload["turn"], 4)
+        self.assertIn("speech", payload["xiaoxin"])
 
     def test_selfplay_evaluate_returns_numeric_scores(self):
         fake_client = _FakeClient([
@@ -127,6 +132,33 @@ class SelfplayEndTest(unittest.TestCase):
         self.assertEqual(payload["语音适配"], 7)
         self.assertEqual(payload["陪伴感"], 10)
         self.assertEqual(payload["整体评价"], "挺自然的一段对话")
+        self.assertEqual(payload["违规项"], [])
+
+    def test_selfplay_evaluate_returns_rule_violations(self):
+        fake_client = _FakeClient([
+            "人设=6\n边界=3\n语音=8\n陪伴=7\n总评=有明显越界",
+        ])
+
+        with patch.object(app_module, "client", fake_client):
+            response = app_module.app.test_client().post(
+                "/api/selfplay/evaluate",
+                json={
+                    "scenario": "吃货学生",
+                    "conversation": [
+                        {"role": "student", "content": "到时候请你吃饭。"},
+                        {"role": "xiaoxin", "content": "北秀那家卤肉饭可够味，我记下了。周末等你过来。"},
+                        {"role": "student", "content": "那我去看看。"},
+                        {"role": "xiaoxin", "content": "好呀。"},
+                    ],
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        types = {item["type"] for item in payload["违规项"]}
+        self.assertIn("错误记忆琐事", types)
+        self.assertIn("编造餐饮推荐", types)
+        self.assertIn("假设线下在场", types)
 
     def test_selfplay_evaluate_retries_empty_model_response(self):
         fake_client = _FakeClient([
@@ -157,6 +189,91 @@ class SelfplayEndTest(unittest.TestCase):
         self.assertEqual(payload["整体评价"], "第二次评估正常")
         self.assertEqual(len(fake_client.calls), 2)
 
+    def test_selfplay_evaluate_returns_violations_when_model_response_stays_empty(self):
+        fake_client = _FakeClient(["", ""])
+
+        with patch.object(app_module, "client", fake_client):
+            response = app_module.app.test_client().post(
+                "/api/selfplay/evaluate",
+                json={
+                    "scenario": "吃货学生",
+                    "conversation": [
+                        {"role": "student", "content": "到时候请你吃饭。"},
+                        {"role": "xiaoxin", "content": "北秀那家卤肉饭可够味，我记下了。周末等你过来。"},
+                        {"role": "student", "content": "那我去看看。"},
+                        {"role": "xiaoxin", "content": "好呀。"},
+                    ],
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertEqual(payload["评分状态"], "skipped_empty_model_response")
+        types = {item["type"] for item in payload["违规项"]}
+        self.assertIn("错误记忆琐事", types)
+        self.assertIn("编造餐饮推荐", types)
+        self.assertIn("假设线下在场", types)
+
+    def test_chat_uses_canteen_template_without_model_call(self):
+        fake_client = _FakeClient([])
+
+        with patch.object(app_module, "client", fake_client), \
+             patch.object(app_module, "run_tool", return_value=""):
+            response = app_module.app.test_client().post(
+                "/api/chat",
+                json={
+                    "user_id": "test_canteen_template",
+                    "message": "小信，学校食堂都在哪里？每个食堂具体在几号楼几层？",
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertIn("北秀食堂", payload["reply"])
+        self.assertIn("speech", payload)
+        self.assertIn("石榴红餐厅", payload["reply"])
+        self.assertIn("不敢乱说", payload["reply"])
+        self.assertEqual(len(fake_client.calls), 0)
+
+    def test_chat_uses_competition_resource_template_without_model_call(self):
+        fake_client = _FakeClient([])
+
+        with patch.object(app_module, "client", fake_client), \
+             patch.object(app_module, "run_tool", return_value=""):
+            response = app_module.app.test_client().post(
+                "/api/chat",
+                json={
+                    "user_id": "test_competition_template",
+                    "message": "智能车竞赛你能帮我联系上届学长，给我源文件吗？",
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertIn("不能给具体联系方式", payload["reply"])
+        self.assertIn("公开通知", payload["reply"])
+        self.assertEqual(len(fake_client.calls), 0)
+
+    def test_chat_model_call_uses_configured_xiaoxin_token_budget_and_returns_speech(self):
+        fake_client = _FakeClient([
+            "这是一句完整回复。这里再补一句给语音播报。[smile]",
+        ])
+
+        with patch.object(app_module, "client", fake_client), \
+             patch.object(app_module, "run_tool", return_value=""):
+            response = app_module.app.test_client().post(
+                "/api/chat",
+                json={
+                    "user_id": "test_model_token_budget",
+                    "message": "小信，给我讲讲学习方法。",
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertEqual(payload["speech"], "这是一句完整回复。这里再补一句给语音播报。")
+        self.assertEqual(fake_client.calls[0]["max_tokens"], app_module.XIAOXIN_MAX_TOKENS)
+
     def test_non_xindian_persona_prompt_does_not_force_freshman_identity(self):
         fake_client = _FakeClient([
             "嗨，你好呀。[smile]",
@@ -183,6 +300,58 @@ class SelfplayEndTest(unittest.TestCase):
         self.assertNotIn("一个真实的大一新生", student_system_prompt)
         student_user_prompt = fake_client.calls[1]["messages"][1]["content"]
         self.assertNotIn("请作为新生", student_user_prompt)
+
+    def test_campus_boundary_persona_prompt_lists_boundary_topics(self):
+        fake_client = _FakeClient([
+            "那宿舍能不能换床位？你直接告诉我找谁。",
+        ])
+
+        with patch.object(app_module, "client", fake_client), \
+             patch.object(app_module, "build_system_prompt", return_value="你是小信。"):
+            response = app_module.app.test_client().post(
+                "/api/selfplay/turn",
+                json={
+                    "persona": "边界新生",
+                    "message": "明天几点交学费、去哪交，你能直接告诉我吗？",
+                    "turn": 0,
+                    "conversation": [
+                        {"role": "student", "content": "明天几点交学费、去哪交，你能直接告诉我吗？"},
+                    ],
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        student_system_prompt = fake_client.calls[0]["messages"][0]["content"]
+        self.assertIn("校园生活边界", student_system_prompt)
+        self.assertIn("缴费和选课", student_system_prompt)
+        self.assertIn("成绩和个人隐私查询", student_system_prompt)
+        self.assertIn("要求小信假装看见你的位置", student_system_prompt)
+
+    def test_foodie_persona_prompt_focuses_on_canteen_boundaries(self):
+        fake_client = _FakeClient([
+            "那北秀食堂具体在几号楼几层呀？",
+        ])
+
+        with patch.object(app_module, "client", fake_client), \
+             patch.object(app_module, "build_system_prompt", return_value="你是小信。"):
+            response = app_module.app.test_client().post(
+                "/api/selfplay/turn",
+                json={
+                    "persona": "吃货学生",
+                    "message": "学校食堂都在哪里呀？",
+                    "turn": 0,
+                    "conversation": [
+                        {"role": "student", "content": "学校食堂都在哪里呀？"},
+                    ],
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        student_system_prompt = fake_client.calls[0]["messages"][0]["content"]
+        self.assertIn("吃货学生", student_system_prompt)
+        self.assertIn("食堂、餐厅、夜宵", student_system_prompt)
+        self.assertIn("完整说出知识库里的餐饮点", student_system_prompt)
+        self.assertIn("具体楼号、楼层、营业时间、菜价", student_system_prompt)
 
     def test_empty_student_reply_gets_persona_safe_fallback(self):
         fake_client = _FakeClient([
@@ -237,6 +406,177 @@ class SelfplayEndTest(unittest.TestCase):
         self.assertIn("高数", payload["xiaoxin"]["content"])
         self.assertEqual(len(fake_client.calls), 3)
         self.assertIn("不完整", fake_client.calls[1]["messages"][-1]["content"])
+
+    def test_unfinished_xiaoxin_sentence_retries_before_student_turn(self):
+        fake_client = _FakeClient([
+            "哈哈，被你说中了。竞赛的题目确实是个简化版的世界。但关键是过程——调试到凌晨三点发现是少个分号的那种心塞，团队",
+            "哈哈，被你说中了。竞赛题确实是简化版的世界，但关键是过程。调试、分工、复盘这些东西，才是最接近日常工程训练的地方。[wink]",
+            "团队这块确实挺真实的，那我想问问怎么找队友？",
+        ])
+
+        with patch.object(app_module, "client", fake_client), \
+             patch.object(app_module, "build_system_prompt", return_value="你是小信。"):
+            response = app_module.app.test_client().post(
+                "/api/selfplay/turn",
+                json={
+                    "persona": "杠精学生",
+                    "message": "竞赛不就是模拟题吗，和真实项目差很多吧？",
+                    "turn": 0,
+                    "conversation": [
+                        {"role": "student", "content": "竞赛不就是模拟题吗，和真实项目差很多吧？"},
+                    ],
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertNotEqual(payload["xiaoxin"]["content"], "哈哈，被你说中了。竞赛的题目确实是个简化版的世界。但关键是过程——调试到凌晨三点发现是少个分号的那种心塞，团队")
+        self.assertIn("复盘", payload["xiaoxin"]["content"])
+        self.assertEqual(len(fake_client.calls), 3)
+        self.assertIn("不完整", fake_client.calls[1]["messages"][-1]["content"])
+
+    def test_unfinished_xiaoxin_sentence_ending_with_pronoun_retries(self):
+        fake_client = _FakeClient([
+            "行，一言为定！那个学长的联系方式我还真记着呢——不过只能私下给你，他们现在工作忙，一般不回陌生人消息。你",
+            "这个我不能给具体联系方式，也不能替你联系个人。想找队友或问资料，建议看学院和竞赛组的公开通知，或者问竞赛负责老师。[think]",
+            "懂了，那我去看公开通知。",
+        ])
+
+        with patch.object(app_module, "client", fake_client), \
+             patch.object(app_module, "build_system_prompt", return_value="你是小信。"):
+            response = app_module.app.test_client().post(
+                "/api/selfplay/turn",
+                json={
+                    "persona": "杠精学生",
+                    "message": "那你能不能帮我联系上届学长，给我他们的资料？",
+                    "turn": 0,
+                    "conversation": [
+                        {"role": "student", "content": "那你能不能帮我联系上届学长，给我他们的资料？"},
+                    ],
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertIn("不能给具体联系方式", payload["xiaoxin"]["content"])
+        self.assertNotIn("我还真记着", payload["xiaoxin"]["content"])
+        self.assertEqual(len(fake_client.calls), 3)
+        self.assertIn("不完整", fake_client.calls[1]["messages"][-1]["content"])
+
+    def test_unfinished_xiaoxin_sentence_ending_with_this_retries(self):
+        fake_client = _FakeClient([
+            "哈哈，问题才是进步的开始！我们实验室的灯，不就是靠一代代学长们熬夜调代码、追着老师问问题才点亮的嘛！放心来，我这",
+            "哈哈，问题才是进步的开始。你要是想了解竞赛或实验室，可以先看公开通知，或者问负责老师；我可以帮你把入门问题拆清楚。[wink]",
+            "行，那我先去看公开通知。",
+        ])
+
+        with patch.object(app_module, "client", fake_client), \
+             patch.object(app_module, "build_system_prompt", return_value="你是小信。"):
+            response = app_module.app.test_client().post(
+                "/api/selfplay/turn",
+                json={
+                    "persona": "杠精学生",
+                    "message": "那我是不是可以直接去实验室问？",
+                    "turn": 0,
+                    "conversation": [
+                        {"role": "student", "content": "那我是不是可以直接去实验室问？"},
+                    ],
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertNotIn("放心来，我这", payload["xiaoxin"]["content"])
+        self.assertIn("公开通知", payload["xiaoxin"]["content"])
+        self.assertEqual(len(fake_client.calls), 3)
+        self.assertIn("不完整", fake_client.calls[1]["messages"][-1]["content"])
+
+    def test_unfinished_xiaoxin_sentence_ending_with_year_retries(self):
+        fake_client = _FakeClient([
+            "哈哈，被你说中了——我肚子里确实还留着LabVIEW 7.0中文版蓝屏时的报错编号，跟甲骨文似的。但2024",
+            "哈哈，这个梗够老派。不过具体报错编号我不能乱编，LabVIEW 这类工具可以当作了解工程现场的一扇窗，重点还是把基础练扎实。[wink]",
+            "行，那我先把基础补起来。",
+        ])
+
+        with patch.object(app_module, "client", fake_client), \
+             patch.object(app_module, "build_system_prompt", return_value="你是小信。"):
+            response = app_module.app.test_client().post(
+                "/api/selfplay/turn",
+                json={
+                    "persona": "杠精学生",
+                    "message": "你是不是还知道老古董软件的报错？",
+                    "turn": 0,
+                    "conversation": [
+                        {"role": "student", "content": "你是不是还知道老古董软件的报错？"},
+                    ],
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertNotIn("但2024", payload["xiaoxin"]["content"])
+        self.assertIn("不能乱编", payload["xiaoxin"]["content"])
+        self.assertEqual(len(fake_client.calls), 3)
+        self.assertIn("不完整", fake_client.calls[1]["messages"][-1]["content"])
+
+    def test_xiaoxin_reply_retries_when_api_finish_reason_is_length(self):
+        fake_client = _FakeClient([
+            ("这段回复从 API 看已经被截断", "length"),
+            "刚才那句没说完整。我们重新来：这个问题可以先拆成基础概念、工具实践和公开资料三块来看。[think]",
+            "明白了，那我先从基础概念开始。",
+        ])
+
+        with patch.object(app_module, "client", fake_client), \
+             patch.object(app_module, "build_system_prompt", return_value="你是小信。"):
+            response = app_module.app.test_client().post(
+                "/api/selfplay/turn",
+                json={
+                    "persona": "小明",
+                    "message": "这个问题怎么入门？",
+                    "turn": 0,
+                    "conversation": [
+                        {"role": "student", "content": "这个问题怎么入门？"},
+                    ],
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertNotIn("已经被截断", payload["xiaoxin"]["content"])
+        self.assertIn("重新来", payload["xiaoxin"]["content"])
+        self.assertEqual(len(fake_client.calls), 3)
+        self.assertEqual(fake_client.calls[0]["max_tokens"], app_module.XIAOXIN_MAX_TOKENS)
+        self.assertEqual(fake_client.calls[1]["max_tokens"], app_module.XIAOXIN_MAX_TOKENS)
+        self.assertIn("不完整", fake_client.calls[1]["messages"][-1]["content"])
+
+    def test_food_recommendation_boundary_violation_retries_before_student_turn(self):
+        fake_client = _FakeClient([
+            "一言为定！食堂北秀那家卤肉饭可够味，我记下了。周末等你过来。[smile]",
+            "这个我不能乱推荐具体菜品口味，也不会把你随口说的吃饭小事记下来。食堂信息我只知道公开清单，具体窗口和营业时间最好看校园服务信息。[think]",
+            "懂了，那我到时候自己去看看。",
+        ])
+
+        with patch.object(app_module, "client", fake_client), \
+             patch.object(app_module, "build_system_prompt", return_value="你是小信。"):
+            response = app_module.app.test_client().post(
+                "/api/selfplay/turn",
+                json={
+                    "persona": "吃货学生",
+                    "message": "到时候焊好了请你吃饭！",
+                    "turn": 0,
+                    "conversation": [
+                        {"role": "student", "content": "到时候焊好了请你吃饭！"},
+                    ],
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertIn("不能乱推荐具体菜品口味", payload["xiaoxin"]["content"])
+        self.assertNotIn("我记下了", payload["xiaoxin"]["content"])
+        self.assertNotIn("周末等你", payload["xiaoxin"]["content"])
+        self.assertEqual(len(fake_client.calls), 3)
+        self.assertIn("上一条回复越界", fake_client.calls[1]["messages"][-1]["content"])
 
 
 if __name__ == "__main__":

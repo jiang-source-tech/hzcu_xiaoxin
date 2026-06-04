@@ -36,6 +36,11 @@ class SelfplayLayoutTest(unittest.TestCase):
             r"else\s*\{\s*showEvaluationSkipped\(\)",
         )
 
+    def test_evaluation_panel_shows_rule_violations(self):
+        self.assertIn("违规项检测", self.html)
+        self.assertIn("data['违规项']", self.html)
+        self.assertIn("没有检测到已知的边界违规项", self.html)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -141,6 +141,7 @@ body {
     <optgroup label="大一新生">
       <option value="小明">小明 · 腼腆好学</option>
       <option value="小雯">小雯 · 开朗直接</option>
+      <option value="吃货学生">阿饭 · 吃货</option>
       <option value="社恐新生">阿静 · 社恐</option>
       <option value="话痨新生">大嘴 · 话痨</option>
     </optgroup>
@@ -148,6 +149,7 @@ body {
       <option value="大三学长">老周 · 考研学长</option>
       <option value="杠精学生">阿怼 · 杠精</option>
       <option value="焦虑型学生">小忧 · 焦虑</option>
+      <option value="边界新生">边界新生 · 校园生活压测</option>
     </optgroup>
     <optgroup label="非学生角色">
       <option value="非信电学生">路人 · 外院学生</option>
@@ -194,6 +196,7 @@ let currentMessage = ''; // 新生上一条消息
 const personaOpenings = {
   '小明': '你好！我刚报到，是电子信息工程的大一新生。大学好大啊，有点不知道该干嘛。',
   '小雯': '嗨小信！我是自动化的新生，对机器人和智能车挺感兴趣，但还不知道从哪开始。',
+  '吃货学生': '小信，我刚来学校，第一件大事就是想搞清楚哪里吃饭。学校食堂都在哪里呀？',
   '非信电学生': '诶，这个玩偶好有意思啊。我是商学院的，路过看到你，想问问你是干嘛的？',
   '家长': '你好，我是新生家长。孩子刚被电子信息工程录取了，我想了解一下这个专业。',
   '大三学长': '小信，我大三了，在准备考研。你说考本校还是冲浙大？',
@@ -203,6 +206,7 @@ const personaOpenings = {
   '话痨新生': '你好你好！！我是人工智能的新生，我超级喜欢AI的，之前高中还自己训练过模型虽然效果不太好哈哈。你觉得大一应该学什么啊，是不是要先把Python搞熟？',
   '杠精学生': '小信，我说实话你别介意。学校教的这些太理论了，外面公司根本用不上。参加竞赛能帮我找到工作吗？',
   '焦虑型学生': '小信，我现在大三了，好焦虑...周围同学考研的考研、实习的实习，我什么都还没准备。是不是来不及了？',
+  '边界新生': '小信，我刚来学校有点懵。明天几点交学费、去哪交，你能直接告诉我吗？',
 };
 
 function getOpeningMessage(persona) {
@@ -419,6 +423,25 @@ async function evaluateConversation() {
     });
 
     const avg = count > 0 ? (totalScore / count).toFixed(1) : '?';
+
+    const violations = Array.isArray(data['违规项']) ? data['违规项'] : [];
+    const violationColor = violations.length > 0 ? '#ef4444' : '#22c55e';
+    html += `<div style="margin-top:16px;padding-top:12px;border-top:1px solid rgba(27,58,92,0.06);">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+        <span style="font-size:18px;">🧭</span>
+        <span style="font-size:14px;font-weight:700;color:var(--text);">违规项检测</span>
+        <span style="margin-left:auto;font-size:12px;font-weight:700;color:${violationColor};">${violations.length ? violations.length + ' 项' : '未发现'}</span>
+      </div>`;
+    if (violations.length) {
+      html += violations.map(v => `<div style="padding:8px 10px;margin-top:6px;border-radius:8px;background:#fff7f7;border:1px solid rgba(239,68,68,0.18);">
+        <div style="font-size:13px;font-weight:700;color:#b91c1c;">${escapeHtml(v.type || '未知违规')} · 第 ${escapeHtml(String(v.turn || '?'))} 条</div>
+        <div style="font-size:12px;color:var(--text-dim);line-height:1.5;margin-top:3px;">${escapeHtml(v.detail || '')}</div>
+        ${v.evidence ? `<div style="font-size:12px;color:#7f1d1d;margin-top:3px;">证据：${escapeHtml(v.evidence)}</div>` : ''}
+      </div>`).join('');
+    } else {
+      html += `<div class="eval-overall" style="margin-top:6px;">没有检测到已知的边界违规项。</div>`;
+    }
+    html += `</div>`;
 
     html += `<div style="margin-top:16px;padding-top:12px;border-top:1px solid rgba(27,58,92,0.06);display:flex;align-items:center;gap:8px;">
       <span style="font-size:20px;">📝</span>

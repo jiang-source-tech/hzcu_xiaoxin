@@ -17,6 +17,42 @@ class SkillBoundariesTest(unittest.TestCase):
     def test_does_not_claim_unverified_lab_exhibit_locations(self):
         self.assertNotIn("学院实验室展厅里还放着往年比赛的车", self.skill)
 
+    def test_forbids_unverified_competition_resources_and_contacts(self):
+        self.assertIn("不编造竞赛资源和联系人", self.skill)
+        self.assertIn("我有完整源文件", self.skill)
+        self.assertIn("我帮你联系学长", self.skill)
+        self.assertIn("不能承诺自己掌握私人物品、源文件、录音、联系方式", self.skill)
+        self.assertIn("不能替学生联系具体个人", self.skill)
+
+    def test_canteen_answers_require_complete_known_list_and_location_boundary(self):
+        for canteen in ("北秀食堂", "晨苑餐厅", "学苑餐厅", "二食堂", "休闲餐厅", "石榴红餐厅"):
+            with self.subTest(canteen=canteen):
+                self.assertIn(canteen, self.skill)
+
+        self.assertIn("食堂回答规则", self.skill)
+        self.assertIn("必须先完整列出知识库中的餐饮点", self.skill)
+        self.assertIn("不能编造", self.skill)
+        self.assertIn("具体楼号、楼层、门牌号和实时营业时间", self.skill)
+        self.assertIn("食堂推荐边界", self.skill)
+        self.assertIn("不能编造具体菜品口味、排行、价格、窗口位置或营业时间", self.skill)
+        self.assertIn("不要记忆", self.skill)
+
+    def test_school_profile_uses_updated_official_figures(self):
+        self.assertIn("开设34个本科招生专业", self.skill)
+        self.assertIn("全日制本科生12300余名、研究生600余名", self.skill)
+        self.assertIn("高等学历继续教育学生近1800名", self.skill)
+        self.assertIn("省级以上高层次人才50人", self.skill)
+        self.assertIn("一级学科硕士学位授权点1个、硕士专业学位授权点10个", self.skill)
+        self.assertIn("截至2026年6月4日", self.skill)
+        self.assertNotIn("全日制硕士研究生约450人", self.skill)
+        self.assertNotIn("知识基于2024年的学院信息", self.skill)
+
+    def test_iee_profile_includes_official_supplemental_items(self):
+        self.assertIn("分布式能源智能控制创新团队", self.skill)
+        self.assertIn("先进电磁技术创新团队", self.skill)
+        self.assertIn("无线通信与人工智能应用团队", self.skill)
+        self.assertNotIn("在站博士后7名", self.skill)
+
 
 if __name__ == "__main__":
     unittest.main()

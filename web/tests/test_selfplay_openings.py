@@ -22,6 +22,20 @@ class SelfplayOpeningsTest(unittest.TestCase):
             r"'非信电学生':\s*'[^']*(?!电子信息工程)[^']*'",
         )
 
+    def test_campus_boundary_persona_is_available(self):
+        self.assertIn('<option value="边界新生">边界新生 · 校园生活压测</option>', self.html)
+        self.assertRegex(
+            self.html,
+            r"'边界新生':\s*'[^']*交学费[^']*'",
+        )
+
+    def test_foodie_persona_is_available(self):
+        self.assertIn('<option value="吃货学生">阿饭 · 吃货</option>', self.html)
+        self.assertRegex(
+            self.html,
+            r"'吃货学生':\s*'[^']*食堂都在哪里[^']*'",
+        )
+
     def test_test_page_uses_role_only(self):
         self.assertNotIn('id="scenarioSelect"', self.html)
         self.assertNotIn("const scenarioOpenings", self.html)
