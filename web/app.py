@@ -123,6 +123,7 @@ def build_system_prompt(user_id: str) -> str:
 
 def parse_expression(text: str) -> tuple[str, str]:
     """解析回复中的表情标记 [smile] [wink] 等，拆成纯文本和表情类型"""
+    text = guard.strip_reasoning_artifacts(text)
     pattern = r'\[(smile|cheer|think|proud|wink|wave|surprise|love|sweat|sad)\]'
     match = re.search(pattern, text)
     if match:

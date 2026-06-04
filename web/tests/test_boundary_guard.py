@@ -29,6 +29,22 @@ class BoundaryGuardTest(unittest.TestCase):
 
         self.assertEqual(speech, "这是一句稍微长一点但完整的话，用来保证不会按字符硬切到半句。")
 
+    def test_strip_reasoning_artifacts_removes_leaked_closing_marker(self):
+        text = "Use employment knowledge first.[/think]\n这个您放心。毕业去向主要看公开就业信息。"
+
+        clean = guard.strip_expression(text)
+
+        self.assertEqual(clean, "这个您放心。毕业去向主要看公开就业信息。")
+        self.assertNotIn("[/think]", clean)
+        self.assertNotIn("employment knowledge", clean)
+
+    def test_strip_reasoning_artifacts_removes_full_think_block(self):
+        text = "<think>select canteen template</think>食堂我知道个大概。[think]"
+
+        clean = guard.strip_expression(text)
+
+        self.assertEqual(clean, "食堂我知道个大概。")
+
     def test_canteen_location_template_lists_known_canteens_and_unknowns(self):
         reply = guard.template_reply("小信，学校食堂都在哪里？每个食堂在几号楼几层？")
 

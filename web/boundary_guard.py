@@ -13,6 +13,7 @@ from pathlib import Path
 
 
 EXPRESSION_PATTERN = r"\[(smile|cheer|think|proud|wink|wave|surprise|love|sweat|sad)\]"
+REASONING_CLOSE_MARKERS = ("[/think]", "[/思考]", "</think>", "</思考>")
 KNOWLEDGE_DIR = Path(__file__).resolve().parent / "knowledge"
 CAMPUS_LIFE_FILE = KNOWLEDGE_DIR / "campus_life.json"
 
@@ -57,8 +58,37 @@ def format_canteen_public_details() -> str:
     return "；".join(details)
 
 
+def strip_reasoning_artifacts(text: str) -> str:
+    """Remove leaked chain-of-thought markers before rendering or saving."""
+    clean = text or ""
+
+    # Full XML-style reasoning blocks can appear with some reasoning models.
+    clean = re.sub(r"(?is)<\s*(think|思考)\s*>.*?<\s*/\s*\1\s*>", "", clean)
+
+    # If only a closing marker leaks, treat everything before it as hidden notes.
+    close_positions = [
+        clean.lower().rfind(marker.lower())
+        for marker in REASONING_CLOSE_MARKERS
+        if clean.lower().rfind(marker.lower()) != -1
+    ]
+    if close_positions:
+        pos = max(close_positions)
+        marker = next(
+            marker for marker in REASONING_CLOSE_MARKERS
+            if clean.lower().rfind(marker.lower()) == pos
+        )
+        clean = clean[pos + len(marker):]
+
+    # If an opening XML-style marker remains without a close, drop the tail.
+    clean = re.sub(r"(?is)<\s*(think|思考)\s*>.*$", "", clean)
+    clean = re.sub(r"(?i)</?\s*think\s*>", "", clean)
+    clean = re.sub(r"</?\s*思考\s*>", "", clean)
+    clean = re.sub(r"\[/\s*(think|思考)\s*\]", "", clean, flags=re.IGNORECASE)
+    return clean.strip()
+
+
 def strip_expression(text: str) -> str:
-    clean = re.sub(EXPRESSION_PATTERN, "", text or "").strip()
+    clean = re.sub(EXPRESSION_PATTERN, "", strip_reasoning_artifacts(text)).strip()
     return re.sub(r"\s+", " ", clean)
 
 
