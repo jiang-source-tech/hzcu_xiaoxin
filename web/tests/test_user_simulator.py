@@ -2,7 +2,7 @@ import os
 import sys
 import unittest
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 os.environ.setdefault("DEEPSEEK_API_KEY", "test-key")
@@ -61,6 +61,18 @@ class UserSimulatorTest(unittest.TestCase):
                 forbid_patterns=[],
             )
             self.assertNotIn("新生:", result)
+
+
+    def test_generate_user_message_handles_none_forbid_patterns(self):
+        with patch("user_simulator._call_api", return_value="测试消息"):
+            result = user_simulator.generate_user_message(
+                character=self.character,
+                intent="随便聊聊。",
+                conversation_summary="",
+                forbid_patterns=None,
+            )
+            self.assertIsInstance(result, str)
+            self.assertEqual(result, "测试消息")
 
 
 if __name__ == "__main__":

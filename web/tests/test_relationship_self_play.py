@@ -5,7 +5,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-import test_relationship_self_play as relationship_self_play
+import relationship_self_play_runner as relationship_self_play
 
 
 class RelationshipSelfPlayEvaluatorTest(unittest.TestCase):

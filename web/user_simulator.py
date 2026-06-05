@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import os
 import random
+from functools import lru_cache
 from typing import Any
 
 from openai import OpenAI
@@ -19,7 +20,8 @@ _MODEL = os.getenv("DEEPSEEK_MODEL", "deepseek-v4-flash")
 _USER_MAX_TOKENS = int(os.getenv("STUDENT_MAX_TOKENS", "300"))
 
 
-def _build_client() -> OpenAI:
+@lru_cache(maxsize=1)
+def _client() -> OpenAI:
     return OpenAI(api_key=_API_KEY, base_url="https://api.deepseek.com")
 
 
@@ -55,15 +57,19 @@ def build_user_messages(
 
 
 def _call_api(messages: list[dict[str, str]], seed: int) -> str:
-    client = _build_client()
-    response = client.chat.completions.create(
-        model=_MODEL,
-        messages=messages,
-        temperature=0.9,
-        max_tokens=_USER_MAX_TOKENS,
-        seed=seed,
-    )
-    return response.choices[0].message.content.strip()
+    try:
+        client = _client()
+        response = client.chat.completions.create(
+            model=_MODEL,
+            messages=messages,
+            temperature=0.9,
+            max_tokens=_USER_MAX_TOKENS,
+            seed=seed,
+        )
+        return response.choices[0].message.content.strip()
+    except Exception as exc:
+        print(f"[USER_SIMULATOR] API error: {exc}")
+        return "嗯，我继续聊。"
 
 
 def generate_user_message(

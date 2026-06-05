@@ -11,6 +11,7 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -18,6 +19,7 @@ from flask import Flask, jsonify, render_template, request
 from openai import OpenAI
 
 import boundary_guard as guard
+import relationship_self_play_runner as relationship_runner
 import relationship_state
 import turn_analyzer
 
@@ -624,6 +626,52 @@ SCENARIOS = {
 @app.route("/test")
 def test_page():
     return app.send_static_file("test.html")
+
+
+@app.route("/relationship-test")
+def relationship_test_page():
+    return app.send_static_file("relationship-test.html")
+
+
+@app.route("/api/relationship-selfplay/personas", methods=["GET"])
+def relationship_selfplay_personas():
+    return jsonify({"personas": relationship_runner.persona_summaries()})
+
+
+@app.route("/api/relationship-selfplay/run", methods=["POST"])
+def relationship_selfplay_run():
+    data = request.get_json(silent=True) or {}
+    persona = data.get("persona", "all")
+    live = bool(data.get("live", False))
+    show_app_log = bool(data.get("show_app_log", False))
+    raw_days = data.get("days")
+
+    if persona != "all" and persona not in relationship_runner.PERSONAS:
+        return jsonify({"error": f"未知 persona: {persona}"}), 400
+
+    max_days = None
+    if raw_days not in (None, "", "all"):
+        try:
+            max_days = int(raw_days)
+        except (TypeError, ValueError):
+            return jsonify({"error": "days 必须是整数或空值"}), 400
+
+    if live and API_KEY in ("", "test-key"):
+        return jsonify({"error": "真实模型模式需要有效的 DEEPSEEK_API_KEY"}), 400
+
+    with tempfile.TemporaryDirectory(prefix="xiaoxin_relationship_web_") as tmp:
+        try:
+            report = relationship_runner.run_suite(
+                persona,
+                Path(tmp),
+                live=live,
+                max_days=max_days,
+                show_app_log=show_app_log,
+            )
+        except Exception as exc:
+            return jsonify({"error": f"关系闭环测试运行失败: {exc}"}), 500
+
+    return jsonify(report)
 
 
 @app.route("/api/selfplay/turn", methods=["POST"])
