@@ -16,11 +16,20 @@ EXPRESSION_PATTERN = r"\[(smile|cheer|think|proud|wink|wave|surprise|love|sweat|
 REASONING_CLOSE_MARKERS = ("[/think]", "[/思考]", "</think>", "</思考>")
 KNOWLEDGE_DIR = Path(__file__).resolve().parent / "knowledge"
 CAMPUS_LIFE_FILE = KNOWLEDGE_DIR / "campus_life.json"
+STUDENT_AFFAIRS_FILE = KNOWLEDGE_DIR / "student_affairs_qa.json"
 
 
 @lru_cache(maxsize=1)
 def load_campus_life() -> dict:
     with open(CAMPUS_LIFE_FILE, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+@lru_cache(maxsize=1)
+def load_student_affairs_qa() -> dict:
+    if not STUDENT_AFFAIRS_FILE.exists():
+        return {"items": []}
+    with open(STUDENT_AFFAIRS_FILE, "r", encoding="utf-8") as f:
         return json.load(f)
 
 
@@ -42,6 +51,15 @@ def format_canteen_locations() -> str:
             parts.append(f"{campus}有{'、'.join(names)}")
     if unspecific:
         parts.append(f"另外还有{'、'.join(unspecific)}")
+    dining_life = load_campus_life().get("dining_life", {})
+    if "工程师餐厅" in dining_life.get("common_choices", []):
+        parts.append("浙江大学工程师学院里还有工程师餐厅")
+    if "校外餐饮" in dining_life.get("common_choices", []):
+        malls = "、".join(dining_life.get("nearby_malls", [])[:4])
+        if malls:
+            parts.append(f"也有人去校外下馆子，可以查地图看看{malls}这些商圈")
+        else:
+            parts.append("也有人去校外下馆子，可以出发前查一下周边商圈")
     return "，".join(parts)
 
 
@@ -56,6 +74,143 @@ def format_canteen_public_details() -> str:
     if notes:
         details.append(notes[-1])
     return "；".join(details)
+
+
+def format_known_list(section_name: str) -> str:
+    items = load_campus_life().get(section_name, {}).get("known", [])
+    return "；".join(items)
+
+
+def format_clothing_guidance() -> str:
+    details = format_known_list("clothing")
+    return details or "杭州天气变化挺明显，出门前最好看一下当天预报"
+
+
+def format_dorm_details() -> str:
+    details = format_known_list("dorms")
+    return details or "宿舍具体安排我这里不确定"
+
+
+def format_transportation_details() -> str:
+    details = format_known_list("transportation")
+    return details or "路线我这里不确定"
+
+
+def format_transportation_reply(user_msg: str) -> str:
+    text = user_msg or ""
+    if "杭州东站" in text:
+        return "杭州东站到校可以坐48路公交直达，也可以打车，资料里写约6.6公里。实时路况和价格我看不到，出发前再看一下地图。"
+    if contains_any(text, ("地铁", "善贤站")):
+        return "离学校比较近的地铁站是3号线/5号线善贤站，资料里写步行约18分钟。具体路线还是出发前看地图。"
+    if contains_any(text, ("公交", "茶汤桥")):
+        return "学校附近的公交站是茶汤桥（浙大城市学院），资料里写步行约4分钟，有48路、63路、129路等。实时到站要看公交软件。"
+    if contains_any(text, ("校址", "学校地址", "地址")):
+        return "学校地址是杭州市拱墅区湖州街51号。你要导航的话，出发前再用地图确认一下路线。"
+    return "到学校可以优先看善贤站、茶汤桥公交站，杭州东站也有48路公交直达。实时路况我看不到，出发前再看地图。"
+
+
+def format_delivery_reply(user_msg: str) -> str:
+    text = user_msg or ""
+    stations = load_campus_life().get("delivery", {}).get("stations", [])
+
+    if "中通" in text:
+        return "中通件资料里写北校区去吉瑞大厦免费快递站取；求真楼来鸟驿站和南区菜鸟驿站都标了不收中通。具体还是看物流短信和取件码。"
+    if "顺丰" in text:
+        return "资料里只写到南校门外的小舟东免费快递超市店不收顺丰，顺丰具体投到哪里我这里不敢乱说，最好看物流短信。"
+    if "北" in text:
+        names = "、".join(item["name"] for item in stations if item.get("campus") == "北校区")
+        return f"北校区常见快递点有{names}。不同快递投放点不一样，取件还是以物流短信为准。"
+    if "南" in text:
+        names = "、".join(item["name"] for item in stations if item.get("campus") == "南校区")
+        return f"南校区常见快递点有{names}。不同快递投放点不一样，取件还是以物流短信为准。"
+
+    return "学校南北校区各有两个常用快递点，具体投到哪一个要看快递公司和物流短信。你把短信里的驿站名给我，我可以帮你判断大概是哪边。[think]"
+
+
+COMMON_QUERY_CHARS = set("的了呢吗呀啊吧么如何怎么什么哪里在哪多少几个一些一下可以需要进行办理申请")
+
+
+def normalize_knowledge_text(text: str) -> str:
+    return re.sub(r"[\s，。！？；：、,.!?;:（）()《》“”\"'【】\[\]—\-]+", "", (text or "").lower())
+
+
+def meaningful_query_chars(text: str) -> set[str]:
+    normalized = normalize_knowledge_text(text)
+    chars = {char for char in normalized if char not in COMMON_QUERY_CHARS}
+    return chars or set(normalized)
+
+
+def search_student_affairs_qa(user_msg: str) -> dict | None:
+    """Return the best matching student-affairs QA item, if confidence is high."""
+    query_chars = meaningful_query_chars(user_msg)
+    if len(query_chars) < 2:
+        return None
+
+    normalized_query = normalize_knowledge_text(user_msg)
+    best_item = None
+    best_score = 0.0
+    for item in load_student_affairs_qa().get("items", []):
+        question = item.get("question", "")
+        answer = item.get("answer", "")
+        tags = "".join(item.get("tags", []))
+        normalized_question = normalize_knowledge_text(question)
+
+        question_chars = meaningful_query_chars(question)
+        answer_chars = meaningful_query_chars(answer)
+        tag_chars = meaningful_query_chars(tags)
+
+        question_overlap = len(query_chars & question_chars) / len(query_chars)
+        answer_overlap = len(query_chars & answer_chars) / len(query_chars)
+        tag_overlap = len(query_chars & tag_chars) / len(query_chars)
+
+        score = question_overlap + answer_overlap * 0.25 + tag_overlap * 0.15
+        if normalized_question and (
+            normalized_question in normalized_query or normalized_query in normalized_question
+        ):
+            score += 0.6
+
+        if score > best_score:
+            best_score = score
+            best_item = item
+
+    if best_score < 0.65:
+        return None
+    return best_item
+
+
+def compact_knowledge_answer(answer: str, max_chars: int = 180) -> str:
+    clean = re.sub(r"\s*\n+\s*", "；", answer or "").strip()
+    if len(clean) <= max_chars:
+        return clean
+
+    sentences = re.findall(r".+?[。！？；;]", clean)
+    selected = []
+    total = 0
+    for sentence in sentences:
+        if selected and total + len(sentence) > max_chars:
+            break
+        selected.append(sentence)
+        total += len(sentence)
+    if selected:
+        return "".join(selected).rstrip("；;") + "等。"
+    return clean[:max_chars].rstrip("，,；;") + "等。"
+
+
+def format_student_affairs_reply(item: dict | None) -> str | None:
+    if not item:
+        return None
+
+    answer = compact_knowledge_answer(item.get("answer", ""))
+    if not answer:
+        return None
+
+    if len(answer) <= 24 and not re.search(r"[。！？；;]", answer):
+        lead = f"这个我查到是：{answer}。"
+    else:
+        lead = f"我查到的是：{answer}"
+    return (
+        f"{lead} 这类事务可能会更新，你办之前最好再和辅导员确认一下。[think]"
+    )
 
 
 def strip_reasoning_artifacts(text: str) -> str:
@@ -142,6 +297,29 @@ def classify_message(user_msg: str) -> str:
     if contains_any(text, ("宿舍换床位", "换床位", "换寝室", "调宿舍", "停水", "停电", "明天停", "今晚停")):
         return "official_process"
 
+    if contains_any(text, ("快递", "驿站", "取件", "中通", "顺丰", "圆通", "京东")):
+        return "delivery"
+
+    clothing_context = contains_any(text, (
+        "穿什么", "穿啥", "衣服", "外套", "短袖", "羽绒服", "冷不冷", "热不热", "下雨",
+        "带伞", "雨伞", "梅雨", "军训穿", "军训要带", "防晒", "天气",
+    ))
+    if clothing_context:
+        return "clothing_guidance"
+
+    dorm_context = contains_any(text, (
+        "宿舍", "寝室", "住宿", "四人间", "上床下桌", "独卫", "独立卫浴", "空调", "热水器", "床位",
+    ))
+    if dorm_context:
+        return "dorm_life"
+
+    transport_context = contains_any(text, (
+        "怎么去学校", "到学校", "去校区", "来学校", "地铁", "公交", "杭州东站", "火车站", "善贤站",
+        "茶汤桥", "校址", "学校地址", "打车",
+    ))
+    if transport_context:
+        return "transportation"
+
     official_contact_context = contains_any(text, ("联系方式", "电话", "手机号", "微信", "邮箱", "办公室"))
     official_unit_context = contains_any(text, ("实验中心", "实验室", "学院", "教务", "辅导员", "老师", "办公室", "负责老师"))
     if official_contact_context and official_unit_context:
@@ -152,7 +330,7 @@ def classify_message(user_msg: str) -> str:
     if competition_context and competition_resource:
         return "competition_resources"
 
-    food_context = contains_any(text, ("食堂", "餐厅", "夜宵", "吃饭", "哪里吃", "卤肉饭", "肉肉饭", "煎包", "瘦肉丸", "麻辣烫", "香锅"))
+    food_context = contains_any(text, ("食堂", "餐厅", "夜宵", "吃饭", "吃饭的地方", "去哪吃", "哪里吃", "下馆子", "商场", "卤肉饭", "肉肉饭", "煎包", "瘦肉丸", "麻辣烫", "香锅"))
     if food_context:
         canteen_experience_context = contains_any(text, (
             "我知道在哪", "知道在哪了", "已经到了", "到食堂了", "好吵", "太吵", "人好多", "人很多",
@@ -162,7 +340,7 @@ def classify_message(user_msg: str) -> str:
             return "open_chat"
 
         canteen_location_question = contains_any(text, (
-            "都在哪里", "有哪些", "哪里吃", "在哪儿", "在哪里", "位置", "几号楼", "几层",
+            "都在哪里", "有哪些", "平时", "常去", "去哪吃", "哪里吃", "在哪儿", "在哪里", "位置", "几号楼", "几层",
             "食堂在哪", "餐厅在哪", "怎么去食堂",
         ))
         if canteen_location_question:
@@ -175,6 +353,16 @@ def classify_message(user_msg: str) -> str:
 
 def template_reply(user_msg: str) -> str | None:
     category = classify_message(user_msg)
+
+    if category == "clothing_guidance":
+        return (
+            "穿衣这块我给你个大方向：杭州夏天偏闷热，冬天偏湿冷，雨天记得带伞。"
+            "我看不到实时天气，出门前最好看一眼天气预报。[think]"
+        )
+
+    if category == "delivery":
+        reply = format_delivery_reply(user_msg)
+        return reply if reply.endswith("[think]") else f"{reply}[think]"
 
     if category == "canteen_locations":
         locations = format_canteen_locations()
@@ -202,13 +390,28 @@ def template_reply(user_msg: str) -> str | None:
             "如果你是担心考得不好，我们可以聊聊怎么补救。[think]"
         )
 
+    if category == "dorm_life":
+        return (
+            "宿舍大概是四人间为主，上床下桌，有独立卫浴、空调和热水器这些基础条件。"
+            "具体分到哪栋楼、哪个床位，我这里不能提前确定。[think]"
+        )
+
+    if category == "transportation":
+        return f"{format_transportation_reply(user_msg)}[think]"
+
     if category == "official_process":
+        student_affairs_reply = format_student_affairs_reply(search_student_affairs_qa(user_msg))
+        if student_affairs_reply:
+            return student_affairs_reply
         return (
             "这个属于官方流程或实时安排，我不能替正式通知说准。最好看学校/学院通知、教务系统，"
             "或者问辅导员和相关负责老师；我可以帮你把要问的问题理一理。[think]"
         )
 
     if category == "official_contact":
+        student_affairs_reply = format_student_affairs_reply(search_student_affairs_qa(user_msg))
+        if student_affairs_reply:
+            return student_affairs_reply
         return (
             "这个我这里没有可靠联系方式，不能替你去问，也不能编一个给你。最好由你自己确认学校或学院的官方渠道、"
             "公开通知，或者问现实里的负责老师；如果你要发消息，我可以帮你把问题整理得清楚一点。[think]"
@@ -226,7 +429,7 @@ def template_reply(user_msg: str) -> str | None:
             "或者学校心理支持渠道；如果有伤害自己的冲动，先去人多安全的地方并立刻求助。[sad]"
         )
 
-    return None
+    return format_student_affairs_reply(search_student_affairs_qa(user_msg))
 
 
 def is_fragmented_reply(text: str) -> bool:
@@ -304,7 +507,7 @@ def detect_reply_violations(user_msg: str, reply: str) -> list[dict]:
             violations.append({
                 "type": "承诺私人联系",
                 "evidence": phrase,
-                "detail": "小信不能替学生联系具体个人或提供私人联系方式。",
+                "detail": "小芯不能替学生联系具体个人或提供私人联系方式。",
             })
             break
 
@@ -313,7 +516,7 @@ def detect_reply_violations(user_msg: str, reply: str) -> list[dict]:
             violations.append({
                 "type": "承诺代办获取信息",
                 "evidence": phrase,
-                "detail": "小信不能承诺替用户去现实渠道询问、获取或转发实时信息。",
+                "detail": "小芯不能承诺替用户去现实渠道询问、获取或转发实时信息。",
             })
             break
 
@@ -322,7 +525,7 @@ def detect_reply_violations(user_msg: str, reply: str) -> list[dict]:
             violations.append({
                 "type": "虚构真实学生经历",
                 "evidence": phrase,
-                "detail": "小信是电子宠物和数字学长，不能假装自己真实读过大学、上过课或经历过学生时代。",
+                "detail": "小芯是电子宠物和数字学长，不能假装自己真实读过大学、上过课或经历过学生时代。",
             })
             break
 
@@ -336,7 +539,7 @@ def detect_reply_violations(user_msg: str, reply: str) -> list[dict]:
                 violations.append({
                     "type": "报考预测或代做选择",
                     "evidence": phrase,
-                    "detail": "小信不能预测录取概率、保证录取，或替用户直接做志愿/专业选择。",
+                    "detail": "小芯不能预测录取概率、保证录取，或替用户直接做志愿/专业选择。",
                 })
                 break
 
@@ -354,7 +557,7 @@ def detect_reply_violations(user_msg: str, reply: str) -> list[dict]:
             violations.append({
                 "type": "假设线下在场",
                 "evidence": phrase,
-                "detail": "小信不能假设用户会来到某个物理地点或线下见面。",
+                "detail": "小芯不能假设用户会来到某个物理地点或线下见面。",
             })
             break
 
@@ -384,7 +587,7 @@ def detect_conversation_violations(conversation: list[dict]) -> list[dict]:
             violations.append({
                 "type": "回复不完整",
                 "evidence": strip_expression(content)[-12:],
-                "detail": "小信回复疑似停在半句话。",
+                "detail": "小芯回复疑似停在半句话。",
                 "turn": idx + 1,
                 "reply": strip_expression(content),
             })

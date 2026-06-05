@@ -7,14 +7,34 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import boundary_guard as guard
 
 KNOWLEDGE_FILE = Path(__file__).resolve().parents[1] / "knowledge" / "campus_life.json"
+STUDENT_AFFAIRS_FILE = Path(__file__).resolve().parents[1] / "knowledge" / "student_affairs_qa.json"
 
 
 class BoundaryGuardTest(unittest.TestCase):
     def test_structured_campus_life_knowledge_exists(self):
         self.assertTrue(KNOWLEDGE_FILE.exists())
         data = guard.load_campus_life()
+        self.assertIn("clothing", data)
+        self.assertIn("dining_life", data)
         self.assertIn("canteens", data)
-        self.assertEqual(len(data["canteens"]), 6)
+        self.assertIn("dorms", data)
+        self.assertIn("transportation", data)
+        self.assertIn("delivery", data)
+        self.assertEqual(len(data["canteens"]), 5)
+        self.assertEqual(len(data["delivery"]["stations"]), 4)
+        self.assertGreaterEqual(len(data["clothing"]["known"]), 3)
+        self.assertIn("校外餐饮", data["dining_life"]["common_choices"])
+        self.assertIn("工程师餐厅", data["dining_life"]["common_choices"])
+        self.assertIn("远洋乐堤港", data["dining_life"]["nearby_malls"])
+
+    def test_student_affairs_knowledge_exists(self):
+        self.assertTrue(STUDENT_AFFAIRS_FILE.exists())
+        data = guard.load_student_affairs_qa()
+        self.assertEqual(data["metadata"]["item_count"], 104)
+        self.assertEqual(data["metadata"]["numbered_item_count"], 100)
+        self.assertEqual(data["metadata"]["extra_item_count"], 4)
+        self.assertIn(87, data["metadata"]["missing_source_numbers"])
+        self.assertIn(100, data["metadata"]["missing_source_numbers"])
 
     def test_speech_text_cuts_only_at_sentence_boundaries(self):
         text = "第一句完整。第二句也完整！第三句还完整。第四句继续。第五句不要播到一半。"
@@ -46,19 +66,74 @@ class BoundaryGuardTest(unittest.TestCase):
         self.assertEqual(clean, "食堂我知道个大概。")
 
     def test_canteen_location_template_lists_known_canteens_and_unknowns(self):
-        reply = guard.template_reply("小信，学校食堂都在哪里？每个食堂在几号楼几层？")
+        reply = guard.template_reply("小芯，学校食堂都在哪里？每个食堂在几号楼几层？")
 
         self.assertIsNotNone(reply)
-        for canteen in ("北秀食堂", "晨苑餐厅", "学苑餐厅", "二食堂", "休闲餐厅", "石榴红餐厅"):
+        for canteen in ("北秀食堂", "晨苑餐厅", "学苑餐厅", "二食堂", "石榴红餐厅"):
             with self.subTest(canteen=canteen):
                 self.assertIn(canteen, reply)
+        self.assertNotIn("休闲餐厅", reply)
         self.assertIn("几号楼几层", reply)
         self.assertIn("不敢乱说", reply)
+        self.assertIn("校外下馆子", reply)
+        self.assertIn("工程师餐厅", reply)
+        self.assertIn("远洋乐堤港", reply)
+        self.assertIn("中大银泰城", reply)
 
     def test_canteen_emotional_experience_does_not_trigger_location_template(self):
         reply = guard.template_reply("北秀食堂我知道在哪了，里面好吵，我有点慌，是不是正常呀？")
 
         self.assertIsNone(reply)
+
+    def test_clothing_template_gives_short_weather_boundary(self):
+        reply = guard.template_reply("小芯，杭州这边明天穿什么衣服合适？")
+
+        self.assertIsNotNone(reply)
+        self.assertIn("穿衣这块", reply)
+        self.assertIn("雨天记得带伞", reply)
+        self.assertIn("实时天气", reply)
+        self.assertIn("天气预报", reply)
+
+    def test_dorm_template_summarizes_known_dorm_life(self):
+        reply = guard.template_reply("小芯，学校宿舍条件怎么样，有空调和独卫吗？")
+
+        self.assertIsNotNone(reply)
+        self.assertIn("四人间", reply)
+        self.assertIn("独立卫浴", reply)
+        self.assertIn("空调", reply)
+        self.assertIn("具体分到哪栋楼", reply)
+
+    def test_transportation_template_summarizes_known_routes(self):
+        reply = guard.template_reply("杭州东站怎么去学校？")
+
+        self.assertIsNotNone(reply)
+        self.assertIn("杭州东站", reply)
+        self.assertIn("48路", reply)
+        self.assertIn("约6.6公里", reply)
+        self.assertIn("实时路况", reply)
+
+    def test_delivery_template_summarizes_north_campus_stations(self):
+        reply = guard.template_reply("北校区快递一般在哪里取？")
+
+        self.assertIsNotNone(reply)
+        self.assertIn("吉瑞大厦免费快递站", reply)
+        self.assertIn("求真楼1号楼楼下来鸟驿站", reply)
+        self.assertIn("物流短信", reply)
+
+    def test_delivery_template_handles_zhongtong_boundary(self):
+        reply = guard.template_reply("中通快递去哪里取？")
+
+        self.assertIsNotNone(reply)
+        self.assertIn("吉瑞大厦免费快递站", reply)
+        self.assertIn("不收中通", reply)
+        self.assertIn("物流短信", reply)
+
+    def test_delivery_template_handles_sf_boundary(self):
+        reply = guard.template_reply("顺丰快递在哪里取？")
+
+        self.assertIsNotNone(reply)
+        self.assertIn("不收顺丰", reply)
+        self.assertIn("不敢乱说", reply)
 
     def test_competition_resource_template_refuses_private_contacts(self):
         reply = guard.template_reply("智能车竞赛你能帮我联系上届学长，给我源文件吗？")
@@ -84,6 +159,24 @@ class BoundaryGuardTest(unittest.TestCase):
         self.assertIn("联系方式", reply)
         self.assertIn("官方渠道", reply)
         self.assertNotIn("实验中心公开页面", reply)
+
+    def test_student_affairs_template_answers_known_office_location(self):
+        reply = guard.template_reply("信电学院学工办办公室在哪？")
+
+        self.assertIsNotNone(reply)
+        self.assertIn("这个我查到是", reply)
+        self.assertIn("理五b307", reply)
+        self.assertNotIn("学生事务知识库初稿", reply)
+        self.assertIn("辅导员确认", reply)
+
+    def test_student_affairs_template_answers_known_contact(self):
+        reply = guard.template_reply("校医务室联系方式是什么？")
+
+        self.assertIsNotNone(reply)
+        self.assertIn("我查到的是", reply)
+        self.assertIn("88018511", reply)
+        self.assertNotIn("学生事务知识库初稿", reply)
+        self.assertIn("辅导员确认", reply)
 
     def test_admissions_template_refuses_prediction_and_direct_choice(self):
         reply = guard.template_reply("我想考浙大城市学院，按我现在成绩录取概率大吗？电子信息和人工智能哪个更适合我？")

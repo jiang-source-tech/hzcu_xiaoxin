@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""小信记忆引擎 · Memory Manager for XiaoXin
+"""小芯记忆引擎 · Memory Manager for XiaoXin
 
-管理小信数字人的对话记忆：重要性打分、艾宾浩斯遗忘曲线衰减、检索与持久化。
+管理小芯数字人的对话记忆：重要性打分、艾宾浩斯遗忘曲线衰减、检索与持久化。
 
 Usage:
     python memory_manager.py --action load   --data-dir <path> [--user-id <id>]
@@ -271,7 +271,7 @@ class MemoryStore:
         if not active:
             return ""
 
-        lines = ["## 关于这个新生（小信记得的）"]
+        lines = ["## 关于这个新生（小芯记得的）"]
         for i, m in enumerate(active[:max_items], 1):
             label = MEMORY_TYPES.get(m["type"], {}).get("label", m["type"])
             status_icon = {"清晰": "●", "可回忆": "◐", "模糊": "○"}.get(m.get("status"), "○")
@@ -285,7 +285,7 @@ class MemoryStore:
 # ─── CLI ────────────────────────────────────────────────────────────────
 
 def main():
-    parser = argparse.ArgumentParser(description="小信记忆引擎")
+    parser = argparse.ArgumentParser(description="小芯记忆引擎")
     parser.add_argument("--action", required=True,
                         choices=["load", "save", "search", "decay", "stats"])
     parser.add_argument("--data-dir", required=True, help="data/ 目录路径")

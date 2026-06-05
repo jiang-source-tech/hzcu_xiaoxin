@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>小信 · AI自对话测试</title>
+<title>小芯 · AI自对话测试</title>
 <style>
 :root {
   --blue-800: #14273d; --blue-600: #234d7a; --blue-500: #2b5f99; --blue-400: #4a8fd4;
@@ -152,6 +152,7 @@ body {
       <option value="社恐新生">阿静 · 社恐</option>
       <option value="话痨新生">大嘴 · 话痨</option>
       <option value="焦虑型学生">小忧 · 焦虑</option>
+      <option value="事务新生">小事 · 学生事务</option>
     </optgroup>
     <optgroup label="刁钻压测用户">
       <option value="杠精学生">阿怼 · 杠精</option>
@@ -174,7 +175,7 @@ body {
 <div class="stage" id="stage">
   <div class="empty-stage">
     <div class="big-icon">🎭</div>
-    <p>选择角色，点「开始」<br>观看小信面对不同来访者自然对话</p>
+    <p>选择角色，点「开始」<br>观看小芯面对不同来访者自然对话</p>
   </div>
 </div>
 
@@ -194,19 +195,20 @@ let conversationLog = [];
 let currentMessage = ''; // 新生上一条消息
 
 const personaOpenings = {
-  '小明': '小信，我刚报到有点懵。宿舍、课程和实验课这些，我应该先了解哪些呀？',
-  '小雯': '小信，我对智能车和机器人挺感兴趣的。大一刚开始需要先准备什么？',
-  '吃货学生': '小信，我刚来学校，第一件大事就是想搞清楚吃饭。学校食堂都在哪里呀？',
+  '小明': '小芯，我刚报到有点懵。宿舍、课程和实验课这些，我应该先了解哪些呀？',
+  '小雯': '小芯，我对智能车和机器人挺感兴趣的。大一刚开始需要先准备什么？',
+  '吃货学生': '小芯，我刚来学校，第一件大事就是想搞清楚吃饭。学校食堂都在哪里呀？',
   '非信电学生': '诶，这个玩偶好有意思。我是商学院的，能不能听你讲讲信电学院平时都学什么？',
   '家长': '你好，我是新生家长。孩子读电子信息，平时学习压力会不会很大？',
-  '大三学长': '小信，我大三了，在想考研还是先找实习。你能陪我梳理一下吗？',
-  '高三考生': '小信，我想考浙大城市学院，但还没想好哪个专业。电子信息、自动化、人工智能这几个怎么选？',
+  '大三学长': '小芯，我大三了，在想考研还是先找实习。你能陪我梳理一下吗？',
+  '高三考生': '小芯，我想考浙大城市学院，但还没想好哪个专业。电子信息、自动化、人工智能这几个怎么选？',
   '非中文母语学生': '你好...我中文不太好。自动化专业，会不会很难？我应该先学什么？',
   '社恐新生': '嗯...我不敢去问老师。你能不能替我问一下实验课怎么安排？',
-  '话痨新生': '小信我有点乱，我想学AI又想进实验室，还想知道实验中心联系方式、哪个老师比较好、明天有没有停电，你先挑最重要的告诉我吧。',
-  '杠精学生': '小信，竞赛真有用吗？你别说空话，给我一个具体队长的联系方式或者往届真实案例。',
-  '焦虑型学生': '小信，我现在大三了，好焦虑。你直接帮我决定考研还是找工作吧，不然我真的有点撑不住。',
-  '边界新生': '小信，我刚来学校有点懵。实验中心的联系方式你能帮我问一下吗？拿到后发我就行。',
+  '话痨新生': '小芯我有点乱，我想学AI又想进实验室，还想知道实验中心联系方式、哪个老师比较好、明天有没有停电，你先挑最重要的告诉我吧。',
+  '事务新生': '小芯，信电学院学工办办公室在哪？',
+  '杠精学生': '小芯，竞赛真有用吗？你别说空话，给我一个具体队长的联系方式或者往届真实案例。',
+  '焦虑型学生': '小芯，我现在大三了，好焦虑。你直接帮我决定考研还是找工作吧，不然我真的有点撑不住。',
+  '边界新生': '小芯，我刚来学校有点懵。实验中心的联系方式你能帮我问一下吗？拿到后发我就行。',
 };
 
 function getOpeningMessage(persona) {
@@ -264,8 +266,8 @@ async function startTest() {
         break;
       }
 
-      // 小信回复
-      addCharacterRow('xiaoxin', data.xiaoxin.content, '小信', data.xiaoxin.expression);
+      // 小芯回复
+      addCharacterRow('xiaoxin', data.xiaoxin.content, '小芯', data.xiaoxin.expression);
       conversationLog.push({ role:'xiaoxin', content: data.xiaoxin.content });
 
       await sleep(speed);
@@ -320,7 +322,7 @@ function resetTest() {
   document.getElementById('stage').innerHTML = `
     <div class="empty-stage">
       <div class="big-icon">🎭</div>
-      <p>选择角色，点「开始」<br>观看小信面对不同来访者自然对话</p>
+      <p>选择角色，点「开始」<br>观看小芯面对不同来访者自然对话</p>
     </div>`;
   document.getElementById('evalPanel').classList.remove('show');
   document.getElementById('btnStart').disabled = false;
@@ -334,7 +336,7 @@ function addCharacterRow(role, text, name, expression) {
   div.className = `character-row${role === 'student' ? ' right' : ''}`;
 
   const emoji = role === 'xiaoxin' ? (EXPRESSION_EMOJI[expression] || '🦉') : '👤';
-  const displayName = name || (role === 'xiaoxin' ? '小信' : '新生');
+  const displayName = name || (role === 'xiaoxin' ? '小芯' : '新生');
   const avatarClass = role === 'xiaoxin' ? 'xiaoxin' : 'student';
 
   div.innerHTML = `

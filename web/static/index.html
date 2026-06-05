@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>小信 · 信电学院数字学长</title>
+<title>小芯 · 信电学院数字学长</title>
 <style>
 :root {
   --blue-900: #0d1b2a; --blue-800: #14273d; --blue-700: #1b3a5c; --blue-600: #234d7a;
@@ -167,7 +167,7 @@ body {
     <div class="chat-header">
       <div class="avatar">🦉</div>
       <div class="header-info">
-        <h1>小信</h1>
+        <h1>小芯</h1>
         <div class="status"><span class="status-dot"></span>信电学院 · 在线</div>
       </div>
       <div class="header-actions">
@@ -178,7 +178,7 @@ body {
 
     <div class="chat-messages" id="messages">
       <div class="welcome-hint">
-        👋 你好！我是小信，信电学院的数字学长。<br>有什么想聊的，随时问我～
+        👋 你好！我是小芯，信电学院的数字学长。<br>有什么想聊的，随时问我～
       </div>
     </div>
 
@@ -189,7 +189,7 @@ body {
     </div>
 
     <div class="footer-info">
-      小信 v3.0 · <span id="modelName">deepseek-v4-flash</span> · 信电学院数字学长
+      小芯 v3.0 · <span id="modelName">deepseek-v4-flash</span> · 信电学院数字学长
     </div>
   </div>
 </div>
@@ -262,7 +262,7 @@ async function deleteSession(sid) {
     await fetch(`/api/sessions/${sid}?user_id=${USER_ID}`, { method: 'DELETE' });
     if (currentSessionId === sid) {
       currentSessionId = null;
-      messagesEl.innerHTML = '<div class="welcome-hint">👋 你好！我是小信，信电学院的数字学长。<br>有什么想聊的，随时问我～</div>';
+      messagesEl.innerHTML = '<div class="welcome-hint">👋 你好！我是小芯，信电学院的数字学长。<br>有什么想聊的，随时问我～</div>';
     }
     refreshSessions();
   } catch(e) { console.error(e); }
@@ -322,7 +322,7 @@ async function resetChat() {
     await fetch('/api/reset', { method: 'POST', headers: {'Content-Type':'application/json'},
       body: JSON.stringify({ user_id: USER_ID }) });
     currentSessionId = null;
-    messagesEl.innerHTML = '<div class="welcome-hint">👋 对话已新建！我是小信，信电学院的数字学长。<br>有什么想聊的，随时问我～</div>';
+    messagesEl.innerHTML = '<div class="welcome-hint">👋 对话已新建！我是小芯，信电学院的数字学长。<br>有什么想聊的，随时问我～</div>';
     refreshSessions();
   } catch(e) { console.error(e); }
 }

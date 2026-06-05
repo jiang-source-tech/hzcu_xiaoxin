@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""小信成长追踪引擎 · Growth Tracker for XiaoXin
+"""小芯成长追踪引擎 · Growth Tracker for XiaoXin
 
-管理学生与小信共同成长的完整生命周期：年级演进、里程碑记录、
+管理学生与小芯共同成长的完整生命周期：年级演进、里程碑记录、
 成长弧线追踪、成长快照生成。
 
 Usage:
@@ -349,7 +349,7 @@ class GrowthStore:
         if snap["days_known"] == 0:
             return ""
 
-        lines = ["## 一起走过的路（小信见证的成长）"]
+        lines = ["## 一起走过的路（小芯见证的成长）"]
         lines.append(f"- 认识 {snap['days_known']} 天了，现在是 {snap['stage']}")
 
         if snap["total_milestones"] > 0:
@@ -373,7 +373,7 @@ class GrowthStore:
 # ─── CLI ────────────────────────────────────────────────────────────────
 
 def main():
-    parser = argparse.ArgumentParser(description="小信成长追踪引擎")
+    parser = argparse.ArgumentParser(description="小芯成长追踪引擎")
     parser.add_argument("--action", required=True,
                         choices=["init", "state", "add", "timeline", "snapshot", "evolve", "arcs"])
     parser.add_argument("--data-dir", required=True)

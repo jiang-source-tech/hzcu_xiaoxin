@@ -1,3 +1,7 @@
+# 本地安装的 skill 缓存
+.agents/
+.claude/
+
 # 敏感文件 - API Key
 web/.env
 

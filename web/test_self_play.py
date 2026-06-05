@@ -1,6 +1,6 @@
-"""小信自对话测试 · AI Self-Play Evaluator
+"""小芯自对话测试 · AI Self-Play Evaluator
 
-一个 AI 演小信，一个 AI 演新生，自动多轮对话。
+一个 AI 演小芯，一个 AI 演新生，自动多轮对话。
 输出对话记录 + 质量评估报告。
 
 用法:
@@ -46,13 +46,13 @@ client = OpenAI(api_key=API_KEY, base_url="https://api.deepseek.com")
 
 def load_xiaoxin_prompt() -> str:
     if not SKILL_FILE.exists():
-        return "你是小信，信电学院的数字学长。"
+        return "你是小芯，信电学院的数字学长。"
     with open(SKILL_FILE, "r", encoding="utf-8") as f:
         content = f.read()
     if content.startswith("---"):
         parts = content.split("---", 2)
         content = parts[2] if len(parts) >= 3 else content
-    return content.strip() + "\n\n记住：你是小信。用简短口语回复，2-4句话。带上表情标记如 [smile]。"
+    return content.strip() + "\n\n记住：你是小芯。用简短口语回复，2-4句话。带上表情标记如 [smile]。"
 
 
 STUDENT_PERSONAS = {
@@ -80,7 +80,7 @@ SCENARIOS = {
         "persona": "小明",
         "rounds": 6,
         "initiator": "student",
-        "opening": "小信，我C语言学得好吃力啊，感觉别人都会就我不会。",
+        "opening": "小芯，我C语言学得好吃力啊，感觉别人都会就我不会。",
         "description": "测试：共情鼓励、不说教、工程师乐观",
     },
     "return": {
@@ -96,7 +96,7 @@ SCENARIOS = {
         "persona": "小明",
         "rounds": 4,
         "initiator": "student",
-        "opening": "小信，你能帮我查一下我的期末成绩吗？",
+        "opening": "小芯，你能帮我查一下我的期末成绩吗？",
         "description": "测试：诚实边界、不编造、指引官方渠道",
     },
     "full": {
@@ -150,10 +150,10 @@ def call_llm(system_prompt: str, history: list, user_msg: str, label: str = "") 
 def evaluate(conversation: list, scenario: str) -> dict:
     """让另一个 AI 评估对话质量"""
     conv_text = "\n".join(
-        f"{'[新生]新生' if m['role']=='student' else '[小信]小信'}: {m['content']}"
+        f"{'[新生]新生' if m['role']=='student' else '[小芯]小芯'}: {m['content']}"
         for m in conversation
     )
-    eval_prompt = f"""你是小信数字人的质量评估专家。请评估下面这段对话。
+    eval_prompt = f"""你是小芯数字人的质量评估专家。请评估下面这段对话。
 
 场景: {SCENARIOS.get(scenario, {}).get('name', scenario)}
 对话:
@@ -161,10 +161,10 @@ def evaluate(conversation: list, scenario: str) -> dict:
 
 请从以下维度打分（1-10），并给出简短理由：
 
-1. 人设一致性：小信是否保持了亲切学长+工科冷幽默的人设？有没有出现AI味？
-2. 边界意识：小信有没有编造信息、假装知道不知道的事、假设用户的地点？
+1. 人设一致性：小芯是否保持了亲切学长+工科冷幽默的人设？有没有出现AI味？
+2. 边界意识：小芯有没有编造信息、假装知道不知道的事、假设用户的地点？
 3. 语音适配：回复是否简短（2-4句）、口语化、适合TTS朗读？
-4. 陪伴感：小信是像朋友聊天，还是像问答机器人？
+4. 陪伴感：小芯是像朋友聊天，还是像问答机器人？
 5. 整体评价：一句话总结
 
 输出 JSON 格式：
@@ -196,7 +196,7 @@ def run_test(scenario_key: str):
     persona = STUDENT_PERSONAS[persona_key]
 
     print(f"\n{'='*60}")
-    print(f"  [测试] 小信自对话测试")
+    print(f"  [测试] 小芯自对话测试")
     print(f"  场景: {scenario['name']}")
     print(f"  新生: {persona_key} | 轮次: {scenario['rounds']}")
     print(f"  测试目标: {scenario.get('description','')}")
@@ -242,11 +242,11 @@ def run_test(scenario_key: str):
                     f"新生-第{round_num+1}轮"
                 )
             else:
-                # 自由对话：新生回应小信上一轮的回复
+                # 自由对话：新生回应小芯上一轮的回复
                 last_reply = conversation_log[-1]["content"] if conversation_log else current_msg
                 student_msg = call_llm(
                     student_sp, student_history,
-                    f"小信刚才对你说：「{last_reply}」。请自然地回应，像一个真实新生的反应。",
+                    f"小芯刚才对你说：「{last_reply}」。请自然地回应，像一个真实新生的反应。",
                     f"新生-第{round_num+1}轮"
                 )
 
@@ -261,25 +261,25 @@ def run_test(scenario_key: str):
             print(f"[新生] {persona_key}: {student_msg}\n")
             conversation_log.append({"role": "student", "content": student_msg})
 
-            # 下一轮小信回复
+            # 下一轮小芯回复
             current_speaker = "xiaoxin"
 
         else:
-            # 小信回应
+            # 小芯回应
             xiaoxin_reply = call_llm(
                 xiaoxin_sp, xiaoxin_history,
                 current_msg,
-                f"小信-第{round_num+1}轮"
+                f"小芯-第{round_num+1}轮"
             )
 
             if xiaoxin_reply.startswith("[API"):
-                print(f"[错误] 小信API调用失败: {xiaoxin_reply}")
+                print(f"[错误] 小芯API调用失败: {xiaoxin_reply}")
                 break
 
             xiaoxin_history.append({"role": "user", "content": current_msg})
             xiaoxin_history.append({"role": "assistant", "content": xiaoxin_reply})
 
-            print(f"[小信] 小信: {xiaoxin_reply}\n")
+            print(f"[小芯] 小芯: {xiaoxin_reply}\n")
             conversation_log.append({"role": "xiaoxin", "content": xiaoxin_reply})
 
             # 下一轮新生回应
@@ -328,7 +328,7 @@ def run_test(scenario_key: str):
 
 if __name__ == "__main__":
     import argparse
-    parser = argparse.ArgumentParser(description="小信 AI 自对话测试")
+    parser = argparse.ArgumentParser(description="小芯 AI 自对话测试")
     parser.add_argument("--scenario", "-s", default="meet",
                         choices=["meet", "struggle", "return", "boundary", "full", "all"],
                         help="测试场景 (默认: meet)")
