@@ -1,0 +1,662 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>关系闭环测试 v2 · 小信</title>
+<style>
+  :root {
+    --bg: #f7f8fa;
+    --surface: #ffffff;
+    --surface-soft: #f0f5f2;
+    --ink: #17202a;
+    --muted: #64707d;
+    --line: #d8dee6;
+    --green: #16815d;
+    --green-soft: #e8f6ef;
+    --red: #c8333a;
+    --red-soft: #fff0f1;
+    --gold: #a66d09;
+    --gold-soft: #fff6df;
+    --teal: #217783;
+    --blue: #2b5f99;
+    --blue-soft: #eef4fb;
+    --radius: 8px;
+    --radius-lg: 16px;
+    --shadow: 0 2px 12px rgba(13,27,42,0.08);
+    --font: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: var(--font);
+    background: var(--bg);
+    color: var(--ink);
+    min-height: 100vh;
+  }
+  body::before {
+    content: '';
+    position: fixed;
+    top: -50%;
+    left: -50%;
+    width: 200%;
+    height: 200%;
+    background: radial-gradient(ellipse at 30% 20%, rgba(22,129,93,0.04) 0%, transparent 60%),
+                radial-gradient(ellipse at 70% 60%, rgba(33,119,131,0.03) 0%, transparent 60%);
+    pointer-events: none; z-index: 0;
+  }
+
+  .shell {
+    position: relative; z-index: 1;
+    width: min(900px, calc(100vw - 32px));
+    margin: 0 auto;
+    padding: 24px 16px 64px;
+  }
+
+  /* Header */
+  .top {
+    margin-bottom: 20px;
+  }
+  .top h1 {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--ink);
+    letter-spacing: -0.02em;
+  }
+  .top .sub {
+    font-size: 0.875rem;
+    color: var(--muted);
+    margin-top: 4px;
+  }
+  .top .nav {
+    margin-top: 8px;
+    font-size: 0.8rem;
+  }
+  .top .nav a {
+    color: var(--teal);
+    text-decoration: none;
+  }
+  .top .nav a:hover { text-decoration: underline; }
+
+  /* Toolbar */
+  .toolbar {
+    display: grid;
+    grid-template-columns: minmax(180px, 1.4fr) 100px minmax(100px, 0.6fr) auto auto;
+    gap: 10px;
+    align-items: end;
+    margin-bottom: 20px;
+    background: var(--surface);
+    padding: 16px;
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow);
+  }
+  .toolbar label {
+    display: block;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--muted);
+    margin-bottom: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  .toolbar select, .toolbar input {
+    width: 100%;
+    padding: 8px 12px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    font-size: 0.9rem;
+    font-family: var(--font);
+    background: var(--surface);
+    color: var(--ink);
+  }
+  .toolbar select:focus, .toolbar input:focus {
+    outline: none;
+    border-color: var(--green);
+    box-shadow: 0 0 0 3px var(--green-soft);
+  }
+  .toolbar .checkbox-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding-top: 20px;
+  }
+  .toolbar .checkbox-row label {
+    margin: 0;
+    font-size: 0.8rem;
+    text-transform: none;
+    letter-spacing: 0;
+  }
+  .btn {
+    padding: 9px 20px;
+    border: none;
+    border-radius: var(--radius);
+    font-size: 0.9rem;
+    font-weight: 600;
+    font-family: var(--font);
+    cursor: pointer;
+    transition: background 0.2s, opacity 0.2s;
+  }
+  .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .btn-primary { background: var(--green); color: #fff; }
+  .btn-primary:hover:not(:disabled) { background: #126b4a; }
+  .btn-secondary { background: var(--surface); color: var(--muted); border: 1px solid var(--line); }
+  .btn-secondary:hover:not(:disabled) { background: var(--bg); }
+
+  /* Status */
+  .status-line {
+    padding: 10px 16px;
+    border-radius: var(--radius);
+    font-size: 0.85rem;
+    margin-bottom: 16px;
+    background: var(--surface-soft);
+    color: var(--muted);
+    transition: all 0.3s;
+  }
+  .status-line.running {
+    background: var(--blue-soft);
+    color: var(--blue);
+    font-weight: 500;
+  }
+  .status-line.error {
+    background: var(--red-soft);
+    color: var(--red);
+    font-weight: 500;
+  }
+  .status-line.done {
+    background: var(--green-soft);
+    color: var(--green);
+    font-weight: 500;
+  }
+
+  /* Results area */
+  .results { margin-top: 16px; }
+  .empty-hint {
+    text-align: center;
+    padding: 48px 16px;
+    border: 2px dashed var(--line);
+    border-radius: var(--radius-lg);
+    color: var(--muted);
+    font-size: 0.9rem;
+  }
+
+  /* Scene card */
+  .scene-card {
+    background: var(--surface);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow);
+    margin-bottom: 16px;
+    overflow: hidden;
+  }
+  .scene-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 20px;
+    cursor: pointer;
+    user-select: none;
+    border-bottom: 1px solid var(--line);
+    transition: background 0.15s;
+  }
+  .scene-head:hover { background: var(--surface-soft); }
+  .scene-head-left { display: flex; align-items: center; gap: 10px; }
+  .scene-head-title { font-weight: 600; }
+  .scene-head-desc { font-size: 0.8rem; color: var(--muted); }
+
+  .badge {
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: 12px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+  }
+  .badge.pass { background: var(--green-soft); color: var(--green); }
+  .badge.warn { background: var(--gold-soft); color: var(--gold); }
+  .badge.fail { background: var(--red-soft); color: var(--red); }
+  .badge.running { background: var(--blue-soft); color: var(--blue); }
+
+  .scene-body { padding: 16px 20px; }
+  .scene-body.hidden { display: none; }
+
+  /* Quality panel */
+  .quality-panel {
+    background: var(--surface-soft);
+    border-radius: var(--radius);
+    padding: 14px 16px;
+    margin-bottom: 16px;
+  }
+  .quality-panel h4 {
+    font-size: 0.85rem;
+    margin-bottom: 10px;
+    color: var(--teal);
+  }
+  .score-bars { display: flex; flex-direction: column; gap: 6px; }
+  .score-row {
+    display: grid;
+    grid-template-columns: 90px 1fr 30px;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.82rem;
+  }
+  .score-row .dim { color: var(--muted); }
+  .score-row .bar-bg {
+    height: 8px;
+    background: var(--line);
+    border-radius: 4px;
+    overflow: hidden;
+  }
+  .score-row .bar-fill {
+    height: 100%;
+    border-radius: 4px;
+    transition: width 0.6s cubic-bezier(0.16,1,0.3,1);
+  }
+  .bar-fill.high { background: var(--green); }
+  .bar-fill.mid { background: var(--gold); }
+  .bar-fill.low { background: var(--red); }
+  .score-row .val { font-weight: 700; text-align: right; }
+  .overall-comment {
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid var(--line);
+    font-size: 0.85rem;
+    color: var(--ink);
+    font-style: italic;
+  }
+
+  /* Episode timeline */
+  .episode-record {
+    padding: 12px 0;
+    border-bottom: 1px solid var(--line);
+    animation: fadeIn 0.35s cubic-bezier(0.16,1,0.3,1);
+  }
+  .episode-record:last-child { border-bottom: none; }
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .ep-day {
+    font-size: 0.7rem;
+    font-weight: 700;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-bottom: 6px;
+  }
+  .ep-chat {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .msg-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    max-width: 90%;
+  }
+  .msg-row.user-msg { align-self: flex-end; flex-direction: row-reverse; }
+  .msg-avatar {
+    width: 28px; height: 28px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.7rem;
+    flex-shrink: 0;
+  }
+  .msg-avatar.student { background: #e8f0fe; color: var(--blue); }
+  .msg-avatar.xiaoxin { background: var(--green-soft); color: var(--green); }
+  .msg-bubble {
+    background: var(--surface-soft);
+    padding: 8px 12px;
+    border-radius: var(--radius);
+    font-size: 0.88rem;
+    line-height: 1.5;
+    word-break: break-word;
+  }
+  .msg-row.user-msg .msg-bubble { background: #e8f0fe; }
+  .msg-row .msg-label {
+    font-size: 0.65rem;
+    color: var(--muted);
+    margin-bottom: 2px;
+    font-weight: 600;
+  }
+
+  /* State chips */
+  .ep-state {
+    margin-top: 8px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+  .chip {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 0.7rem;
+    background: var(--bg);
+    color: var(--muted);
+    border: 1px solid var(--line);
+  }
+  .chip.active { background: var(--green-soft); color: var(--green); border-color: var(--green); }
+  .chip.warn { background: var(--gold-soft); color: var(--gold); border-color: var(--gold); }
+
+  /* Violations */
+  .violation-item {
+    margin-top: 6px;
+    padding: 6px 10px;
+    border-left: 3px solid var(--red);
+    background: var(--red-soft);
+    border-radius: 0 var(--radius) var(--radius) 0;
+    font-size: 0.78rem;
+    color: var(--red);
+  }
+
+  /* Notes */
+  .scene-notes {
+    margin-top: 12px;
+    padding: 10px 14px;
+    background: var(--surface-soft);
+    border-radius: var(--radius);
+    font-size: 0.82rem;
+    color: var(--muted);
+    white-space: pre-line;
+    line-height: 1.6;
+  }
+
+  @media (max-width: 700px) {
+    .toolbar {
+      grid-template-columns: 1fr 1fr;
+    }
+    .msg-row { max-width: 95%; }
+  }
+</style>
+</head>
+<body>
+<div class="shell">
+  <div class="top">
+    <h1>关系闭环测试 v2</h1>
+    <div class="sub">三 LLM 自对话 · 用户模拟 LLM → 小信真实管线 → 质量裁判 LLM</div>
+    <div class="nav">
+      <a href="/test">对话压测</a> ·
+      <a href="/relationship-test">关系测试 v1</a> ·
+      <a href="/">主页</a>
+    </div>
+  </div>
+
+  <div class="toolbar">
+    <div>
+      <label for="sceneSelect">场景</label>
+      <select id="sceneSelect">
+        <option value="all">全部场景</option>
+      </select>
+    </div>
+    <div>
+      <label for="seedInput">Seed（可选）</label>
+      <input type="number" id="seedInput" placeholder="随机">
+    </div>
+    <div class="checkbox-row">
+      <input type="checkbox" id="skipJudge">
+      <label for="skipJudge">跳过质量裁判</label>
+    </div>
+    <button class="btn btn-primary" id="runButton" onclick="startRun()">开始测试</button>
+    <button class="btn btn-secondary" id="clearButton" onclick="clearResults()">清空</button>
+  </div>
+
+  <div class="status-line" id="statusLine">选择场景后点击开始。</div>
+  <div class="results" id="results">
+    <div class="empty-hint">选择场景后开始运行 — 用户 LLM 每次生成不同的自然对话。</div>
+  </div>
+</div>
+
+<script>
+  const API_BASE = '';
+
+  async function loadScenes() {
+    try {
+      const resp = await fetch(`${API_BASE}/api/v2/relationship-selfplay/scenes`);
+      const data = await resp.json();
+      const sel = document.getElementById('sceneSelect');
+      sel.innerHTML = '<option value="all">全部场景</option>';
+      data.scenes.forEach(s => {
+        const opt = document.createElement('option');
+        opt.value = s.scene_id;
+        opt.textContent = `${s.name} ・ ${s.episode_count} episodes`;
+        sel.appendChild(opt);
+      });
+    } catch (e) {
+      console.error('Failed to load scenes:', e);
+    }
+  }
+
+  function escapeHtml(t) {
+    const d = document.createElement('div');
+    d.textContent = t;
+    return d.innerHTML;
+  }
+
+  function renderQualityPanel(qj) {
+    if (!qj || !qj.scores) return '';
+    const scores = qj.scores;
+    let bars = '';
+    for (const [dim, val] of Object.entries(scores)) {
+      const pct = val != null ? (val / 5 * 100) : 0;
+      const cls = val >= 4 ? 'high' : val >= 3 ? 'mid' : 'low';
+      bars += `
+        <div class="score-row">
+          <span class="dim">${escapeHtml(dim)}</span>
+          <div class="bar-bg"><div class="bar-fill ${cls}" style="width:${pct}%"></div></div>
+          <span class="val">${val != null ? val : '?'}</span>
+        </div>`;
+    }
+    return `
+      <div class="quality-panel">
+        <h4>质量裁判评分</h4>
+        <div class="score-bars">${bars}</div>
+        ${qj.overall_comment ? `<div class="overall-comment">${escapeHtml(qj.overall_comment)}</div>` : ''}
+      </div>`;
+  }
+
+  function renderRecord(r) {
+    const tag = r.action === 'greeting' ? 'G' : 'C';
+    let html = `<div class="ep-day">Day ${r.day} · ${r.action === 'greeting' ? '打开问候' : '对话'}</div>`;
+
+    // Chat bubbles
+    html += '<div class="ep-chat">';
+    if (r.user_message) {
+      html += `
+        <div class="msg-row user-msg">
+          <div class="msg-avatar student">生</div>
+          <div>
+            <div class="msg-label">用户</div>
+            <div class="msg-bubble">${escapeHtml(r.user_message)}</div>
+          </div>
+        </div>`;
+    }
+    html += `
+      <div class="msg-row">
+        <div class="msg-avatar xiaoxin">信</div>
+        <div>
+          <div class="msg-label">小信${r.expression ? ` ${r.expression}` : ''}</div>
+          <div class="msg-bubble">${escapeHtml(r.xiaoxin_reply)}</div>
+        </div>
+      </div>`;
+    html += '</div>';
+
+    // State chips
+    const state = r.state || {};
+    const hook = r.next_hook || {};
+    html += '<div class="ep-state">';
+    html += `<span class="chip">stage: ${escapeHtml(state.user_stage || '?')}</span>`;
+    html += `<span class="chip">topic: ${escapeHtml(state.recent_topic || '?')}</span>`;
+    html += `<span class="chip ${hook.active ? 'active' : 'warn'}">hook: ${escapeHtml(hook.topic || 'none')} ${hook.active ? 'active' : 'inactive'}</span>`;
+    html += '</div>';
+
+    // Violations
+    (r.violations || []).forEach(v => {
+      html += `<div class="violation-item">⚠ ${escapeHtml(v.type)}: ${escapeHtml(v.evidence || v.detail || '')}</div>`;
+    });
+
+    return `<div class="episode-record">${html}</div>`;
+  }
+
+  function showSceneCard(sceneId, name) {
+    let card = document.getElementById(`card-${sceneId}`);
+    if (!card) {
+      card = document.createElement('div');
+      card.className = 'scene-card';
+      card.id = `card-${sceneId}`;
+      card.innerHTML = `
+        <div class="scene-head" onclick="this.parentElement.querySelector('.scene-body').classList.toggle('hidden')">
+          <div class="scene-head-left">
+            <span class="badge running">RUNNING</span>
+            <span class="scene-head-title">${escapeHtml(name)}</span>
+            <span class="scene-head-desc" id="desc-${sceneId}"></span>
+          </div>
+        </div>
+        <div class="scene-body" id="body-${sceneId}"></div>`;
+      document.getElementById('results').appendChild(card);
+    }
+    return card.querySelector('.scene-body');
+  }
+
+  function updateSceneVerdict(sceneId, verdict, notes, desc, seed) {
+    const card = document.getElementById(`card-${sceneId}`);
+    if (!card) return;
+    const badge = card.querySelector('.badge');
+    const vb = verdict === 'PASS' ? 'pass' : verdict === 'WARN' ? 'warn' : 'fail';
+    badge.className = `badge ${vb}`;
+    badge.textContent = verdict;
+    const descEl = document.getElementById(`desc-${sceneId}`);
+    if (descEl) descEl.textContent = desc ? `· ${escapeHtml(desc)}` : '';
+    const body = document.getElementById(`body-${sceneId}`);
+    if (body && notes) {
+      const existing = body.querySelector('.scene-notes');
+      if (existing) existing.remove();
+      const div = document.createElement('div');
+      div.className = 'scene-notes';
+      div.textContent = notes + (seed != null ? `\nseed: ${seed}` : '');
+      body.appendChild(div);
+    }
+  }
+
+  function startRun() {
+    const scene = document.getElementById('sceneSelect').value;
+    const seedRaw = document.getElementById('seedInput').value;
+    const skipJudge = document.getElementById('skipJudge').checked;
+    const statusEl = document.getElementById('statusLine');
+    const runBtn = document.getElementById('runButton');
+    const resultsEl = document.getElementById('results');
+
+    // Build URL with query params for EventSource
+    const params = new URLSearchParams();
+    params.set('scene', scene);
+    if (seedRaw) params.set('seed', seedRaw);
+    if (skipJudge) params.set('skip_judge', '1');
+
+    // Clear old results
+    resultsEl.innerHTML = '';
+
+    statusEl.textContent = '运行中…';
+    statusEl.className = 'status-line running';
+    runBtn.disabled = true;
+
+    // Use fetch + streaming instead of EventSource (EventSource doesn't support POST)
+    fetch(`${API_BASE}/api/v2/relationship-selfplay/run`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        scene: scene,
+        seed: seedRaw ? parseInt(seedRaw) : null,
+        skip_judge: skipJudge
+      })
+    }).then(response => {
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      function processChunk() {
+        reader.read().then(({ done, value }) => {
+          if (done) {
+            statusEl.textContent = '测试完成。';
+            statusEl.className = 'status-line done';
+            runBtn.disabled = false;
+            return;
+          }
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || '';
+
+          let currentEvent = '';
+          let currentData = '';
+
+          for (const line of lines) {
+            if (line.startsWith('event: ')) {
+              currentEvent = line.slice(7).trim();
+            } else if (line.startsWith('data: ')) {
+              currentData = line.slice(6);
+            } else if (line === '' && currentEvent && currentData) {
+              try {
+                handleEvent(currentEvent, JSON.parse(currentData));
+              } catch (e) {
+                console.error('Parse error:', e, currentData);
+              }
+              currentEvent = '';
+              currentData = '';
+            }
+          }
+          processChunk();
+        });
+      }
+      processChunk();
+    }).catch(err => {
+      statusEl.textContent = `连接失败: ${err.message}`;
+      statusEl.className = 'status-line error';
+      runBtn.disabled = false;
+    });
+  }
+
+  let currentSceneId = null;
+
+  function handleEvent(eventType, data) {
+    if (eventType === 'episode') {
+      const body = showSceneCard(currentSceneId || data.scene_id || 'unknown', data.action === 'greeting' ? '进行中…' : '进行中…');
+      body.innerHTML += renderRecord(data);
+      body.scrollIntoView({ behavior: 'smooth', block: 'end' });
+    } else if (eventType === 'quality_judge') {
+      const body = showSceneCard(currentSceneId || 'unknown', '进行中…');
+      body.innerHTML += renderQualityPanel(data);
+    } else if (eventType === 'complete') {
+      currentSceneId = data.scene_id;
+      // Pre-create the card if it doesn't exist
+      const body = showSceneCard(data.scene_id, data.name);
+      // Add judge panel if not already shown
+      if (data.quality_judge && data.quality_judge.scores) {
+        const qp = body.querySelector('.quality-panel');
+        if (!qp) body.innerHTML += renderQualityPanel(data.quality_judge);
+      }
+      // Add records if not already shown (for rendering without streaming)
+      if (data.records && body.querySelectorAll('.episode-record').length === 0) {
+        data.records.forEach(r => { body.innerHTML += renderRecord(r); });
+      }
+      updateSceneVerdict(data.scene_id, data.verdict, data.notes, data.description, data.seed);
+    } else if (eventType === 'error') {
+      const statusEl = document.getElementById('statusLine');
+      statusEl.textContent = `错误: ${data.message}`;
+      statusEl.className = 'status-line error';
+      document.getElementById('runButton').disabled = false;
+    }
+  }
+
+  function clearResults() {
+    document.getElementById('results').innerHTML = '<div class="empty-hint">选择场景后开始运行 — 用户 LLM 每次生成不同的自然对话。</div>';
+    document.getElementById('statusLine').textContent = '选择场景后点击开始。';
+    document.getElementById('statusLine').className = 'status-line';
+    currentSceneId = null;
+  }
+
+  loadScenes();
+</script>
+</body>
+</html>

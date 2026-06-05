@@ -10,7 +10,7 @@ import json
 import random
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable, Generator
 
 import relationship_state
 import rule_evaluator
@@ -236,6 +236,171 @@ def run_episode_greeting(
         "next_hook": next_hook,
         "violations": violations,
     }
+
+
+def run_scene_streaming(
+    scene_id: str = "all",
+    seed: int | None = None,
+    skip_quality_judge: bool = False,
+    max_days: int | None = None,
+    chat_fn: Callable[[str, str, str], dict[str, Any]] | None = None,
+    greeting_fn: Callable[[str, str, str], dict[str, Any]] | None = None,
+    base_date: datetime | None = None,
+) -> Generator[dict[str, Any], None, None]:
+    """逐 episode 产出 SSE 事件。供 web API 使用。
+
+    chat_fn(user_id, message, data_dir) -> reply_dict
+    greeting_fn(user_id, today, data_dir) -> greeting_dict
+
+    产出事件格式: {"event": "episode"|"quality_judge"|"complete"|"error", "data": ...}
+    """
+    import os
+    import tempfile
+
+    import quality_judge
+
+    if seed is None:
+        seed = random.randint(0, 2**31 - 1)
+
+    # 加载场景
+    scenes = load_all_scenes()
+    if scene_id != "all":
+        scenes = [s for s in scenes if s["scene_id"] == scene_id]
+        if not scenes:
+            raise ValueError(f"未知场景: {scene_id}")
+
+    # 默认回调：用 Flask test client
+    if chat_fn is None or greeting_fn is None:
+        import app as app_module
+
+        if chat_fn is None:
+            def chat_fn(uid, msg, dd):
+                old = app_module.DATA_DIR
+                app_module.DATA_DIR = Path(dd)
+                app_module.active_conversations.clear()
+                try:
+                    return app_module.chat_core(uid, msg, dd)
+                finally:
+                    app_module.DATA_DIR = old
+
+        if greeting_fn is None:
+            def greeting_fn(uid, today, dd):
+                old = app_module.DATA_DIR
+                app_module.DATA_DIR = Path(dd)
+                try:
+                    return relationship_state.greeting_payload(Path(dd), uid, today=today)
+                finally:
+                    app_module.DATA_DIR = old
+
+    data_dir = Path(tempfile.mkdtemp(prefix="xiaoxin_rel_v2_"))
+
+    for scene in scenes:
+        scene_name = scene["scene_id"]
+        user_id = f"rel_v2_{scene_name}"
+
+        # 清理旧状态
+        for prefix in ("relationship", "sessions", "memory", "growth"):
+            path = data_dir / f"{prefix}_{user_id}.json"
+            if path.exists():
+                path.unlink()
+
+        base = base_date or DEFAULT_BASE_DATE
+        records = []
+        all_violations = []
+        episode_seed = seed
+
+        for i, episode in enumerate(scene["episodes"]):
+            if max_days is not None and episode["day"] > max_days:
+                continue
+
+            ep_seed = episode_seed + i
+            probes = episode.get("probes", {})
+
+            if episode["action"] == "greeting":
+                target = base + timedelta(days=episode["day"])
+                today = target.date().isoformat()
+                payload = greeting_fn(user_id, today, str(data_dir))
+
+                state = relationship_state.load_state(data_dir, user_id)
+                next_hook = state.get("next_hook") or {}
+                reply_text = str(payload.get("greeting") or payload.get("reply") or "")
+
+                violations = rule_evaluator.evaluate_episode(
+                    probes=probes, state=state, next_hook=next_hook,
+                    reply_text=reply_text, payload_kind=payload.get("kind"),
+                )
+
+                record = {
+                    "day": episode["day"], "action": "greeting",
+                    "user_message": None, "xiaoxin_reply": reply_text,
+                    "speech": payload.get("speech", ""),
+                    "expression": payload.get("expression", ""),
+                    "companion_action": payload.get("companion_action"),
+                    "state": relationship_state.public_state(state),
+                    "next_hook": next_hook, "violations": violations,
+                }
+            else:
+                # Chat episode: 用户 LLM 生成消息 → 小信回复
+                character = scene["character"]
+                intent = episode["intent"]
+                forbid = episode.get("forbid_patterns", [])
+                conv_summary = summarize_conversation(records)
+                user_msg = user_simulator.generate_user_message(
+                    character=character, intent=intent,
+                    conversation_summary=conv_summary,
+                    forbid_patterns=forbid, seed=ep_seed,
+                )
+
+                payload = chat_fn(user_id, user_msg, str(data_dir))
+                state = relationship_state.load_state(data_dir, user_id)
+                next_hook = state.get("next_hook") or {}
+                reply_text = str(payload.get("reply") or payload.get("greeting") or "")
+
+                violations = rule_evaluator.evaluate_episode(
+                    probes=probes, state=state, next_hook=next_hook,
+                    reply_text=reply_text, payload_kind=payload.get("kind"),
+                    user_msg=user_msg,
+                )
+
+                record = {
+                    "day": episode["day"], "action": "chat",
+                    "user_message": user_msg, "xiaoxin_reply": reply_text,
+                    "speech": payload.get("speech", ""),
+                    "expression": payload.get("expression", ""),
+                    "companion_action": payload.get("companion_action"),
+                    "state": relationship_state.public_state(state),
+                    "next_hook": next_hook, "violations": violations,
+                }
+
+            records.append(record)
+            all_violations.extend(violations)
+            yield {"event": "episode", "data": record}
+
+        # 质量裁判
+        quality_result = None
+        if not skip_quality_judge and records:
+            quality_result = quality_judge.evaluate(
+                scene_name=scene.get("name", scene_name), records=records)
+            yield {"event": "quality_judge", "data": quality_result}
+
+        quality_scores = quality_result["scores"] if quality_result else {}
+        overall = compute_overall_result(all_violations, quality_scores)
+
+        yield {
+            "event": "complete",
+            "data": {
+                "scene_id": scene_name,
+                "name": scene.get("name", scene_name),
+                "description": scene.get("description", ""),
+                "seed": seed,
+                "verdict": overall["verdict"],
+                "rule_violations_count": overall["rule_violations_count"],
+                "quality_avg_score": overall["quality_avg_score"],
+                "notes": _generate_notes(overall, records),
+                "records": records,
+                "quality_judge": quality_result,
+            },
+        }
 
 
 def run_scene(

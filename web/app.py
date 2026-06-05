@@ -15,12 +15,13 @@ import tempfile
 from pathlib import Path
 
 from dotenv import load_dotenv
-from flask import Flask, jsonify, render_template, request
+from flask import Flask, Response, jsonify, render_template, request
 from openai import OpenAI
 
 import boundary_guard as guard
 import relationship_self_play_runner as relationship_runner
 import relationship_state
+import scene_runner as scene_runner_v2
 import turn_analyzer
 
 load_dotenv()
@@ -271,6 +272,111 @@ def auto_save_memory(user_id: str, user_msg: str, reply: str):
 
 
 # ─── 会话持久化 ──────────────────────────────────────────────────────────
+
+# ─── 内部核心函数（供路由和 v2 测试共用）─────────────────────────────
+
+
+def chat_core(user_id: str, user_msg: str, data_dir: str | None = None) -> dict:
+    """核心聊天管线：加载状态 → 分析 → 调用 DeepSeek → 保存状态 → 返回 payload。
+
+    供 /api/chat 路由和 scene_runner v2 流式测试共用。
+    """
+    data_path = Path(data_dir) if data_dir else DATA_DIR
+
+    # 加载关系状态
+    relationship = relationship_state.load_state(data_path, user_id)
+    turn_analysis = turn_analyzer.analyze(user_msg, relationship)
+
+    # 边界兜底
+    guarded_reply = guard.template_reply(user_msg)
+    if guarded_reply:
+        relationship = relationship_state.update_after_turn(relationship, turn_analysis)
+        relationship_state.save_state(data_path, user_id, relationship)
+        clean, expression = parse_expression(guarded_reply)
+        return {
+            "reply": clean,
+            "speech": guard.to_speech_text(clean),
+            "expression": expression,
+            "kind": "template",
+            "state": relationship_state.public_state(relationship),
+            "next_hook": relationship.get("next_hook"),
+            "companion_action": relationship_state.companion_action(relationship),
+        }
+
+    # 构建 system prompt（无历史记录 —— v2 场景测试不持久化会话）
+    system_prompt = build_system_prompt(user_id, relationship, turn_analysis)
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": user_msg},
+    ]
+
+    # 调用 DeepSeek API
+    try:
+        response = client.chat.completions.create(
+            model=MODEL,
+            messages=messages,
+            temperature=0.8,
+            max_tokens=XIAOXIN_MAX_TOKENS,
+        )
+    except Exception as e:
+        print(f"[API ERROR] {e}")
+        return {
+            "reply": f"API 调用失败: {e}",
+            "speech": "",
+            "expression": "sad",
+            "kind": "error",
+            "state": relationship_state.public_state(relationship),
+            "next_hook": relationship.get("next_hook"),
+            "companion_action": None,
+        }
+
+    reply = response.choices[0].message.content.strip()
+
+    # 重试：不完整回复
+    if response_was_truncated(response) or is_fragmented_xiaoxin_reply(reply):
+        retry_messages = [
+            *messages,
+            {"role": "system", "content": "上一条回复不完整，请重新用小信的口吻完整回答。输出2-4句，可以带一个表情标记。"},
+        ]
+        try:
+            response = client.chat.completions.create(
+                model=MODEL, messages=retry_messages, temperature=0.6, max_tokens=XIAOXIN_MAX_TOKENS)
+            reply = response.choices[0].message.content.strip()
+        except Exception:
+            pass
+
+    # 重试：越界回复
+    if is_boundary_violating_xiaoxin_reply(user_msg, reply):
+        retry_messages = [
+            *messages,
+            {"role": "system", "content": guard.retry_instruction(user_msg, reply)},
+        ]
+        try:
+            response = client.chat.completions.create(
+                model=MODEL, messages=retry_messages, temperature=0.5, max_tokens=XIAOXIN_MAX_TOKENS)
+            reply = response.choices[0].message.content.strip()
+        except Exception:
+            pass
+
+    # 兜底
+    if is_fragmented_xiaoxin_reply(reply) or is_boundary_violating_xiaoxin_reply(user_msg, reply):
+        reply = fallback_xiaoxin_reply(user_msg)
+
+    # 更新关系状态
+    relationship = relationship_state.update_after_turn(relationship, turn_analysis)
+    relationship_state.save_state(data_path, user_id, relationship)
+
+    clean, expression = parse_expression(reply)
+    return {
+        "reply": clean,
+        "speech": guard.to_speech_text(clean),
+        "expression": expression,
+        "kind": "chat",
+        "state": relationship_state.public_state(relationship),
+        "next_hook": relationship.get("next_hook"),
+        "companion_action": relationship_state.companion_action(relationship),
+    }
+
 
 def _sessions_file(user_id: str) -> Path:
     return DATA_DIR / f"sessions_{user_id}.json"
@@ -833,6 +939,64 @@ def selfplay_evaluate():
         return jsonify(result)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+# ─── v2 关系闭环自对话测试路由 ─────────────────────────────────────────
+
+
+@app.route("/relationship-v2-test")
+def relationship_v2_test_page():
+    return app.send_static_file("relationship-v2-test.html")
+
+
+@app.route("/api/v2/relationship-selfplay/scenes", methods=["GET"])
+def v2_relationship_scenes():
+    scenes = scene_runner_v2.load_all_scenes()
+    summaries = [
+        {
+            "scene_id": s["scene_id"],
+            "name": s.get("name", s["scene_id"]),
+            "description": s.get("description", ""),
+            "episode_count": len(s["episodes"]),
+        }
+        for s in scenes
+    ]
+    return jsonify({"scenes": summaries})
+
+
+@app.route("/api/v2/relationship-selfplay/run", methods=["POST"])
+def v2_relationship_run():
+    """SSE 流式返回关系闭环测试结果。"""
+    data = request.get_json(silent=True) or {}
+    scene_id = data.get("scene", "all")
+    raw_seed = data.get("seed")
+    seed = int(raw_seed) if raw_seed is not None else None
+    skip_judge = bool(data.get("skip_judge", False))
+    raw_max_days = data.get("max_days")
+    max_days = int(raw_max_days) if raw_max_days is not None else None
+
+    def generate():
+        try:
+            for event in scene_runner_v2.run_scene_streaming(
+                scene_id=scene_id,
+                seed=seed,
+                skip_quality_judge=skip_judge,
+                max_days=max_days,
+                chat_fn=lambda uid, msg, dd: chat_core(uid, msg, dd),
+                greeting_fn=lambda uid, today, dd: relationship_state.greeting_payload(
+                    Path(dd), uid, today=today
+                ),
+            ):
+                yield f"event: {event['event']}\n"
+                yield f"data: {json.dumps(event['data'], ensure_ascii=False)}\n\n"
+        except ValueError as exc:
+            yield f"event: error\n"
+            yield f"data: {json.dumps({'message': str(exc)}, ensure_ascii=False)}\n\n"
+        except Exception as exc:
+            yield f"event: error\n"
+            yield f"data: {json.dumps({'message': f'运行失败: {exc}'}, ensure_ascii=False)}\n\n"
+
+    return Response(generate(), mimetype="text/event-stream")
 
 
 if __name__ == "__main__":
