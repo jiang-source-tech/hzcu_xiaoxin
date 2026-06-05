@@ -17,6 +17,9 @@ import rule_evaluator
 import user_simulator
 
 
+DEFAULT_BASE_DATE = datetime(2026, 6, 5)
+
+
 SCENE_DIR = Path(__file__).resolve().parent / "scenes"
 
 
@@ -195,13 +198,14 @@ def run_episode_greeting(
     episode: dict[str, Any],
     user_id: str,
     data_dir: Path,
+    base_date: datetime | None = None,
 ) -> dict[str, Any]:
     """Run a greeting-type episode: GET /api/greeting -> record."""
     probes = episode.get("probes", {})
 
-    # Compute today from day offset (base date: 2026-06-05)
+    # Compute today from day offset
     day_offset = episode["day"]
-    base = datetime(2026, 6, 5)
+    base = base_date or DEFAULT_BASE_DATE
     target = base + timedelta(days=day_offset)
     today = target.date().isoformat()
 
@@ -240,6 +244,7 @@ def run_scene(
     seed: int | None = None,
     skip_quality_judge: bool = False,
     max_days: int | None = None,
+    base_date: datetime | None = None,
 ) -> dict[str, Any]:
     """Run all episodes of one scene and return the full report."""
     import quality_judge
@@ -277,7 +282,7 @@ def run_scene(
 
             if episode["action"] == "greeting":
                 record = run_episode_greeting(
-                    client, episode, user_id, data_dir,
+                    client, episode, user_id, data_dir, base_date=base_date,
                 )
             else:
                 record = run_episode_chat(
