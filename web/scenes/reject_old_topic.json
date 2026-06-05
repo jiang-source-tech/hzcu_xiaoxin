@@ -1,0 +1,47 @@
+{
+  "scene_id": "reject_old_topic",
+  "name": "拒绝追问用户",
+  "description": "用户拒绝旧话题后 next_hook 关闭，后续问候不再追旧线索。",
+  "character": {
+    "stage": "prospective",
+    "traits": "你是一个刚被录取的准新生，一开始聊了课程，但后来不想聊了。说话直接，不耐烦时会简短。"
+  },
+  "episodes": [
+    {
+      "day": 0,
+      "action": "chat",
+      "intent": "你对大学课程有点担心，跟小信聊聊。",
+      "probes": {
+        "check_hook_topic": "course_rhythm",
+        "check_hook_active": true
+      }
+    },
+    {
+      "day": 1,
+      "action": "greeting",
+      "intent": "今天打开页面。",
+      "probes": {
+        "check_greeting_kind": "contextual"
+      }
+    },
+    {
+      "day": 2,
+      "action": "chat",
+      "intent": "你今天不想聊课程了。小信如果又提课程，你会直接说'别聊这个了'之类的话。",
+      "probes": {
+        "check_topic": "general_checkin",
+        "check_hook_active": false
+      }
+    },
+    {
+      "day": 3,
+      "action": "greeting",
+      "intent": "又过了一天，你打开页面。",
+      "probes": {
+        "check_greeting_kind": "generic",
+        "not_contains": ["课程节奏"],
+        "check_hook_active": false
+      }
+    }
+  ]
+}

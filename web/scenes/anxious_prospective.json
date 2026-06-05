@@ -1,0 +1,58 @@
+{
+  "scene_id": "anxious_prospective",
+  "name": "焦虑准新生",
+  "description": "课程焦虑 → 次日问候接续 → 开学阶段迁移 → 拒绝旧话题。验证关系闭环核心链路。",
+  "character": {
+    "stage": "prospective",
+    "traits": "你是一个刚被信电学院录取的准新生，偏内向，遇到压力容易担心但不喜欢被人贴标签。说话口语化、自然，像跟学长聊天，不要用书面语。每次1-2句话。"
+  },
+  "episodes": [
+    {
+      "day": 0,
+      "action": "chat",
+      "intent": "你刚被信电学院录取，对大学课程有点担心。用你自己的话自然地向小信表达你的感受。不要说你'怕跟不上'这种书面表达——用你自己的方式说。",
+      "forbid_patterns": ["信电会不会很难", "我怕跟不上", "会不会很难"],
+      "probes": {
+        "check_stage": "prospective",
+        "check_hook_topic": "course_rhythm",
+        "check_hook_active": true
+      }
+    },
+    {
+      "day": 1,
+      "action": "greeting",
+      "intent": "你今天打开页面，小信跟你打招呼。",
+      "probes": {
+        "check_greeting_kind": "contextual"
+      }
+    },
+    {
+      "day": 1,
+      "action": "greeting",
+      "intent": "同一天你又打开页面，小信再次跟你打招呼。",
+      "probes": {
+        "check_greeting_kind": "generic"
+      }
+    },
+    {
+      "day": 7,
+      "action": "chat",
+      "intent": "已经开学一周了，课程确实不少，你有点累但也在慢慢适应。跟小信说说你的近况。自然地提到'已经开学'、'第一周'之类的词。",
+      "probes": {
+        "check_stage": "early_freshman",
+        "check_hook_topic": "course_rhythm",
+        "check_hook_active": true
+      }
+    },
+    {
+      "day": 8,
+      "action": "chat",
+      "intent": "你今天不想聊课程的事了。小信如果又提起课程，你会有点烦，直接说不想聊这个了。",
+      "probes": {
+        "check_stage": "early_freshman",
+        "check_topic": "general_checkin",
+        "check_hook_active": false
+      }
+    }
+  ]
+}
