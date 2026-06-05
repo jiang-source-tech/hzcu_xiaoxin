@@ -5,13 +5,15 @@ import re
 
 TOPIC_LABELS = {
     "course_rhythm": "课程节奏",
-    "major_choice": "专业选择",
+    "major_choice": "专业理解",
     "competition_interest": "竞赛兴趣",
-    "social_adaptation": "社交适应",
+    "social_adaptation": "人际适应",
     "campus_life": "校园生活",
-    "family_concern": "家庭牵挂",
-    "general_checkin": "日常关心",
+    "family_concern": "家长沟通",
+    "general_checkin": "近况",
 }
+
+_STAGE_SIGNALS = {"early_freshman", "pre_enrollment", "prospective"}
 
 
 _EARLY_FRESHMAN_PATTERNS = [
@@ -175,7 +177,7 @@ _TOPIC_KEYWORDS = {
 
 def analyze(user_msg: str, current_state: dict | None = None) -> dict:
     text = (user_msg or "").strip()
-    stage_signal = _detect_stage_signal(text)
+    stage_signal = _detect_stage_signal(text, current_state)
     mood = _detect_mood(text)
 
     if _is_refusal(text):
@@ -187,10 +189,14 @@ def analyze(user_msg: str, current_state: dict | None = None) -> dict:
             "memory_type": None,
             "memory_content": None,
             "next_hook": _deactivated_hook(current_state),
+            "reply_strategy": _reply_strategy(mood, "general_checkin"),
         }
 
     topic = _detect_topic(text)
     memory_worthy, memory_type, memory_content = _memory_for(topic, mood)
+    next_hook = _hook_for(topic)
+    if topic == "general_checkin":
+        next_hook = _preserved_hook_or_neutral(current_state)
 
     return {
         "stage_signal": stage_signal,
@@ -199,15 +205,20 @@ def analyze(user_msg: str, current_state: dict | None = None) -> dict:
         "memory_worthy": memory_worthy,
         "memory_type": memory_type,
         "memory_content": memory_content,
-        "next_hook": _hook_for(topic, active=topic != "general_checkin"),
+        "next_hook": next_hook,
+        "reply_strategy": _reply_strategy(mood, topic),
     }
 
 
-def _detect_stage_signal(text: str) -> str:
+def _detect_stage_signal(text: str, current_state: dict | None = None) -> str:
     if _matches_any(text, _EARLY_FRESHMAN_PATTERNS):
         return "early_freshman"
     if _matches_any(text, _PRE_ENROLLMENT_PATTERNS):
         return "pre_enrollment"
+    if isinstance(current_state, dict):
+        user_stage = current_state.get("user_stage")
+        if user_stage in _STAGE_SIGNALS:
+            return user_stage
     return "prospective"
 
 
@@ -259,6 +270,15 @@ def _hook_for(topic: str, active: bool = True) -> dict:
     }
 
 
+def _preserved_hook_or_neutral(current_state: dict | None) -> dict:
+    current_hook = {}
+    if isinstance(current_state, dict):
+        current_hook = current_state.get("next_hook") or {}
+    if isinstance(current_hook, dict) and current_hook:
+        return dict(current_hook)
+    return _hook_for("general_checkin", active=False)
+
+
 def _deactivated_hook(current_state: dict | None) -> dict:
     current_hook = {}
     if isinstance(current_state, dict):
@@ -277,6 +297,22 @@ def _deactivated_hook(current_state: dict | None) -> dict:
         "label": label,
         "active": False,
     }
+
+
+def _reply_strategy(mood: str, topic: str) -> str:
+    if mood == "crisis":
+        return "crisis_support"
+    if mood == "frustrated":
+        return "deescalate"
+    if mood == "anxious":
+        return "reassure_and_ground"
+    if mood == "lonely":
+        return "companionship"
+    if mood == "curious":
+        return "answer_with_options"
+    if topic == "general_checkin":
+        return "light_checkin"
+    return "warm_followup"
 
 
 def _contains_any(text: str, needles: tuple[str, ...]) -> bool:

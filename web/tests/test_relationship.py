@@ -23,6 +23,7 @@ class TurnAnalyzerTest(unittest.TestCase):
             "label": "课程节奏",
             "active": True,
         })
+        self.assertIn("reply_strategy", result)
         self.assertNotIn("下次", str(result["next_hook"]))
 
     def test_early_freshman_stage_signal_when_user_says_school_started(self):
@@ -31,6 +32,7 @@ class TurnAnalyzerTest(unittest.TestCase):
         self.assertEqual(result["stage_signal"], "early_freshman")
         self.assertEqual(result["mood"], "anxious")
         self.assertEqual(result["topic"], "course_rhythm")
+        self.assertIn("reply_strategy", result)
 
     def test_refusing_topic_deactivates_current_hook(self):
         current_state = {
@@ -46,6 +48,47 @@ class TurnAnalyzerTest(unittest.TestCase):
         self.assertEqual(result["mood"], "frustrated")
         self.assertEqual(result["topic"], "general_checkin")
         self.assertFalse(result["next_hook"]["active"])
+        self.assertIn("reply_strategy", result)
+
+    def test_refusal_preserves_existing_stage_signal(self):
+        current_state = {
+            "user_stage": "early_freshman",
+            "next_hook": {
+                "topic": "course_rhythm",
+                "label": "课程节奏",
+                "active": True,
+            }
+        }
+
+        result = turn_analyzer.analyze("别聊了。", current_state)
+
+        self.assertEqual(result["stage_signal"], "early_freshman")
+        self.assertEqual(result["topic"], "general_checkin")
+        self.assertFalse(result["next_hook"]["active"])
+        self.assertIn("reply_strategy", result)
+
+    def test_neutral_no_topic_preserves_existing_hook(self):
+        current_state = {
+            "user_stage": "early_freshman",
+            "next_hook": {
+                "topic": "course_rhythm",
+                "label": "课程节奏",
+                "active": True,
+            }
+        }
+
+        result = turn_analyzer.analyze("嗯嗯", current_state)
+
+        self.assertEqual(result["stage_signal"], "early_freshman")
+        self.assertEqual(result["topic"], "general_checkin")
+        self.assertEqual(result["next_hook"], current_state["next_hook"])
+        self.assertIn("reply_strategy", result)
+
+    def test_topic_labels_match_relationship_plan(self):
+        self.assertEqual(turn_analyzer.TOPIC_LABELS["major_choice"], "专业理解")
+        self.assertEqual(turn_analyzer.TOPIC_LABELS["social_adaptation"], "人际适应")
+        self.assertEqual(turn_analyzer.TOPIC_LABELS["family_concern"], "家长沟通")
+        self.assertEqual(turn_analyzer.TOPIC_LABELS["general_checkin"], "近况")
 
 
 if __name__ == "__main__":
