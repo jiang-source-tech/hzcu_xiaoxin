@@ -11,6 +11,7 @@
       "day": 0,
       "action": "chat",
       "intent": "你有点担心开学后不容易交到朋友。用你自己的话跟小信说说，不要用'社恐'这种词。",
+      "forbid_patterns": ["社恐", "社交恐惧"],
       "probes": {
         "check_hook_topic": "social_adaptation",
         "check_hook_active": true,
