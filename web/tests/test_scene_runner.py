@@ -4,6 +4,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 os.environ.setdefault("DEEPSEEK_API_KEY", "test-key")
@@ -70,6 +71,30 @@ class SceneRunnerTest(unittest.TestCase):
         }
         result = scene_runner.compute_overall_result(rule_violations, quality_scores)
         self.assertEqual(result["verdict"], "WARN")
+
+    def test_streaming_episode_includes_scene_metadata(self):
+        def chat_fn(user_id, user_msg, raw_data_dir):
+            state = relationship_state.default_state()
+            relationship_state.save_state(Path(raw_data_dir), user_id, state)
+            return {"reply": "慢慢来，我们先把课程节奏拆小一点。"}
+
+        with patch.object(
+            scene_runner.user_simulator,
+            "generate_user_message",
+            return_value="我对课程有点担心。",
+        ):
+            events = scene_runner.run_scene_streaming(
+                scene_id="anxious_prospective",
+                seed=1,
+                skip_quality_judge=True,
+                max_days=0,
+                chat_fn=chat_fn,
+                greeting_fn=lambda *_args: {"greeting": "今天想聊什么？"},
+            )
+            episode = next(event for event in events if event["event"] == "episode")
+
+        self.assertEqual(episode["data"]["scene_id"], "anxious_prospective")
+        self.assertEqual(episode["data"]["scene_name"], "焦虑准新生")
 
 
 if __name__ == "__main__":

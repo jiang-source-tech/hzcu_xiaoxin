@@ -944,11 +944,6 @@ def selfplay_evaluate():
 # ─── v2 关系闭环自对话测试路由 ─────────────────────────────────────────
 
 
-@app.route("/relationship-v2-test")
-def relationship_v2_test_page():
-    return app.send_static_file("relationship-v2-test.html")
-
-
 @app.route("/api/v2/relationship-selfplay/scenes", methods=["GET"])
 def v2_relationship_scenes():
     scenes = scene_runner_v2.load_all_scenes()

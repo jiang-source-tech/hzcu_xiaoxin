@@ -331,6 +331,8 @@ def run_scene_streaming(
                 )
 
                 record = {
+                    "scene_id": scene_name,
+                    "scene_name": scene.get("name", scene_name),
                     "day": episode["day"], "action": "greeting",
                     "user_message": None, "xiaoxin_reply": reply_text,
                     "speech": payload.get("speech", ""),
@@ -363,6 +365,8 @@ def run_scene_streaming(
                 )
 
                 record = {
+                    "scene_id": scene_name,
+                    "scene_name": scene.get("name", scene_name),
                     "day": episode["day"], "action": "chat",
                     "user_message": user_msg, "xiaoxin_reply": reply_text,
                     "speech": payload.get("speech", ""),

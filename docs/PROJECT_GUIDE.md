@@ -34,12 +34,16 @@ hzcu_xiaoxin/
 └── web/
     ├── app.py
     ├── boundary_guard.py
+    ├── relationship_state.py
+    ├── scene_runner.py
+    ├── test_relationship_v2.py
     ├── knowledge/
     │   ├── campus_life.json
     │   └── student_affairs_qa.json
     ├── static/
     │   ├── index.html
-    │   └── test.html
+    │   ├── test.html
+    │   └── relationship-v2-test.html
     ├── tests/
     ├── requirements.txt
     └── test_self_play.py
@@ -52,8 +56,11 @@ hzcu_xiaoxin/
 - `skills/xiaoxin-senior/tools/`：本地记忆和成长追踪脚本。
 - `web/app.py`：Flask 后端、LLM 调用、会话持久化、自对话测试接口。
 - `web/boundary_guard.py`：确定性边界防护、模板回复、违规检测、TTS 文本裁剪。
+- `web/relationship_state.py`：关系闭环状态、阶段、next hook 和每日问候策略。
+- `web/scene_runner.py`：关系闭环 v2 场景执行器，驱动用户模拟 LLM、小芯管线和质量裁判。
 - `web/static/index.html`：正常聊天页面。
 - `web/static/test.html`：可视化 AI 自对话测试页面。
+- `web/static/relationship-v2-test.html`：关系闭环测试页面；访问入口是 `/relationship-test`。
 - `web/tests/`：单元测试和回归测试。
 - `web/knowledge/campus_life.json`：结构化校园生活知识，用于食堂、宿舍、交通、快递、穿衣等可确定场景。
 - `web/knowledge/student_affairs_qa.json`：学生事务问答知识，用于命中度较高的官方流程类问题；回答后仍提示用户办事前向辅导员或官方渠道确认。
@@ -96,6 +103,9 @@ python app.py
 
 - 正常聊天页：http://localhost:5000
 - 自对话测试页：http://localhost:5000/test
+- 关系闭环测试页：http://localhost:5000/relationship-test
+
+当前只保留 `/relationship-test` 作为关系闭环 Web 入口。`/relationship-v2-test` 已移除；静态文件仍名为 `relationship-v2-test.html`，只是内部文件名，不是访问路径。
 
 ## 4. 正常聊天链路
 
@@ -179,7 +189,54 @@ python app.py
 
 当前这两处仍有重复配置。后续如果继续扩展，建议抽成 `selfplay_personas.json` 或 `selfplay_personas.py`，由前后端共享同一份配置。
 
-## 6. System Prompt 组成
+## 6. `/relationship-test` 关系闭环 v2 测试链路
+
+`/relationship-test` 用于审核“同一个用户跨天回来时，小芯是否形成健康、克制、可控的关系连续性”。它和 `/test` 的区别是：`/test` 看一段自由自对话，`/relationship-test` 看一个用户周期里的状态迁移、每日问候、hook 接续和边界表现。
+
+当前实现是 v2 三 LLM 闭环：
+
+```text
+场景 JSON
+  -> 用户模拟 LLM 生成自然用户消息
+  -> 小芯真实管线处理 /api/chat 或 /api/greeting
+  -> 规则评估器检查状态、边界、内容探针
+  -> 质量裁判 LLM 对完整时间线评分
+  -> Web 页面按天回放用户 LLM / 小芯 LLM 的详细对话
+```
+
+相关入口：
+
+- 页面：`GET /relationship-test`
+- 场景列表：`GET /api/v2/relationship-selfplay/scenes`
+- 运行测试：`POST /api/v2/relationship-selfplay/run`
+- CLI：`python test_relationship_v2.py`
+
+相关文件：
+
+- `web/scenes/*.json`：关系闭环 v2 场景，包含角色卡、day、action、intent、probes。
+- `web/user_simulator.py`：用户模拟 LLM，根据角色卡和 intent 生成自然用户消息。
+- `web/turn_analyzer.py`：从用户消息里识别阶段、情绪、主题和 next hook。
+- `web/relationship_state.py`：保存 `user_stage`、`recent_topic`、`next_hook`、问候日期等关系状态。
+- `web/rule_evaluator.py`：检查 forbidden phrases、状态探针、内容探针和问候类型。
+- `web/quality_judge.py`：质量裁判 LLM，输出接续自然度、分寸感、情绪承接、阶段感知、边界安全评分。
+- `web/scene_runner.py`：串联场景执行、状态读取、规则评估、质量裁判和 SSE 事件。
+- `web/static/relationship-v2-test.html`：每日 LLM 对话回放页面。
+
+页面当前展示：
+
+- 每个场景的 PASS / WARN / FAIL 摘要。
+- 每天的用户 LLM 消息和小芯 LLM 回复。
+- 每轮后的阶段、主题、hook、表情、动作状态条。
+- 违规项的可读解释，例如“期望阶段 prospective，实际阶段 pre_enrollment”。
+- 质量裁判评分和综合评语。
+
+注意事项：
+
+- 跑 Web 测试需要 `DEEPSEEK_API_KEY`，除非勾选“跳过质量裁判”只能省掉裁判 LLM，用户模拟和小芯真实管线仍依赖模型调用。
+- `pre_enrollment` 是合法阶段，含义是“准备入学”；如果测试期望与实际阶段不一致，页面会在对应 day 下显示阶段错误。
+- `/relationship-v2-test` 不是访问入口，访问会返回 404。
+
+## 7. System Prompt 组成
 
 `build_system_prompt(user_id)` 负责构建小芯主提示词：
 
@@ -203,7 +260,7 @@ SKILL.md
 - 改某类高风险回答：优先改 `boundary_guard.py`。
 - 改测试页模拟用户行为：改 `STUDENT_PERSONAS` 和 `personaOpenings`。
 
-## 7. 边界防护设计
+## 8. 边界防护设计
 
 `boundary_guard.py` 是小芯的确定性防线，职责包括：
 
@@ -213,7 +270,7 @@ SKILL.md
 - 检测模型回复里的越界表达。
 - 发现碎片回复、越界回复后触发重试或 fallback。
 
-### 7.1 用户问题分类
+### 8.1 用户问题分类
 
 `classify_message(user_msg)` 会把用户问题分为：
 
@@ -231,7 +288,7 @@ SKILL.md
 - `canteen_recommendation`：食堂推荐、价格、窗口、营业时间等。
 - `open_chat`：普通聊天，不走模板。
 
-### 7.2 模板回复
+### 8.2 模板回复
 
 `template_reply(user_msg)` 对高风险问题直接返回固定回复，避免模型自由发挥。
 
@@ -246,7 +303,7 @@ SKILL.md
 - 食堂细节：只能说知识库里的公开信息，不编窗口、价格、营业时间。
 - 宿舍、交通、快递、穿衣：可以基于结构化知识给大方向，但不能声称知道实时天气、实时路况、实时投递点、具体床位分配。
 
-### 7.3 回复违规检测
+### 8.3 回复违规检测
 
 `detect_reply_violations(user_msg, reply)` 检测模型输出中的常见越界：
 
@@ -262,7 +319,7 @@ SKILL.md
 
 如果首次模型回复越界，后端会追加 `retry_instruction()` 再生成一次；如果仍越界，则使用 `fallback_reply()`。
 
-### 7.4 当前边界测试覆盖
+### 8.4 当前边界测试覆盖
 
 当前测试不只验证“有没有打分”，而是尽量把高风险情形做成可回归的违规检测。覆盖重点如下：
 
@@ -277,7 +334,7 @@ SKILL.md
 
 这些覆盖点分别落在 `test_boundary_guard.py`、`test_skill_boundaries.py`、`test_selfplay_end.py`、`test_selfplay_openings.py` 和 `test_selfplay_layout.py` 中。
 
-## 8. 记忆系统
+## 9. 记忆系统
 
 记忆系统由 `skills/xiaoxin-senior/tools/memory_manager.py` 管理。
 
@@ -306,7 +363,7 @@ SKILL.md
 - 高三报考、志愿、录取概率、专业适合度等咨询问题。
 - 边界 guard 中 `should_skip_memory()` 明确排除的内容。
 
-## 9. 成长系统
+## 10. 成长系统
 
 成长系统由 `skills/xiaoxin-senior/tools/growth_tracker.py` 管理。
 
@@ -324,9 +381,9 @@ SKILL.md
 
 成长系统目前和 Flask 通过命令行脚本连接，简单但有进程开销。后续如果性能成为问题，可以把工具逻辑改为 Python 模块直接导入。
 
-## 10. 前端页面
+## 11. 前端页面
 
-### 10.1 正常聊天页
+### 11.1 正常聊天页
 
 文件：`web/static/index.html`
 
@@ -338,7 +395,7 @@ SKILL.md
 - 调用 `/api/chat`。
 - 管理基本会话 UI。
 
-### 10.2 自对话测试页
+### 11.2 自对话测试页
 
 文件：`web/static/test.html`
 
@@ -357,12 +414,32 @@ SKILL.md
 - `/test` 的用户侧是 AI 模拟的，目的是压力测试。
 - 如果发现用户侧失真，优先修改 `personaOpenings` 和 `STUDENT_PERSONAS`。
 
-## 11. 测试体系
+### 11.3 关系闭环测试页
+
+文件：`web/static/relationship-v2-test.html`
+
+访问入口：`/relationship-test`
+
+职责：
+
+- 选择关系闭环 v2 场景。
+- 可选填写 seed，便于复现实验。
+- 调用 `/api/v2/relationship-selfplay/run`，用流式事件展示测试进度。
+- 按 day 展示用户模拟 LLM 和小芯 LLM 的完整对话。
+- 展示每轮后的 `user_stage`、`recent_topic`、`next_hook`、表情和动作。
+- 展示规则违规项和质量裁判评分。
+
+注意：
+
+- `/relationship-v2-test` 已移除，不要在文档或页面中继续使用它作为入口。
+- 静态文件名保留 `relationship-v2-test.html`，因为它承载的是 v2 测试页面实现；对外 URL 统一为 `/relationship-test`。
+
+## 12. 测试体系
 
 运行所有 web 测试：
 
 ```bash
-python -m unittest discover -s web\tests
+python -m pytest web\tests -q
 ```
 
 常用测试文件：
@@ -371,6 +448,8 @@ python -m unittest discover -s web\tests
 - `test_selfplay_end.py`：自对话 API、模拟用户人格、fallback、边界重试。
 - `test_selfplay_openings.py`：`/test` 页面角色和开场白。
 - `test_selfplay_layout.py`：测试页布局和违规展示。
+- `test_relationship_v2_page.py`：`/relationship-test` 页面入口和每日 LLM 回放布局。
+- `test_scene_runner.py`：关系闭环 v2 场景加载、流式 episode 元数据和综合结果。
 - `test_skill_boundaries.py`：`SKILL.md` 中必须存在的边界规则。
 
 修改建议：
@@ -379,10 +458,11 @@ python -m unittest discover -s web\tests
 - 改小芯长期设定时，补 `test_skill_boundaries.py`。
 - 改 `/test` 用户角色时，补 `test_selfplay_end.py` 和 `test_selfplay_openings.py`。
 - 改前端测试页布局时，补 `test_selfplay_layout.py`。
+- 改 `/relationship-test` 页面或关系闭环 v2 流式事件时，补 `test_relationship_v2_page.py` 和 `test_scene_runner.py`。
 
-## 12. 常见修改场景
+## 13. 常见修改场景
 
-### 12.1 增加一个新的校园生活知识点
+### 13.1 增加一个新的校园生活知识点
 
 如果是结构化、可确定的信息：
 
@@ -397,7 +477,7 @@ python -m unittest discover -s web\tests
 2. 在 guard 中让小芯说明“不确定/没有可靠信息”。
 3. 指向官方渠道或让用户向现实负责人确认。
 
-### 12.2 增加一个新的边界场景
+### 13.2 增加一个新的边界场景
 
 流程：
 
@@ -415,7 +495,7 @@ python -m unittest discover -s web\tests
 - 不能把用户随口吃饭、报考犹豫等内容存成长期记忆。
 - 不能把实时天气、交通、快递投递点说成确定事实。
 
-### 12.3 修改小芯人格
+### 13.3 修改小芯人格
 
 流程：
 
@@ -424,7 +504,7 @@ python -m unittest discover -s web\tests
 3. 在 `test_skill_boundaries.py` 补文案存在性测试。
 4. 用 `/test` 跑多轮压力对话审核实际效果。
 
-### 12.4 修改 `/test` 角色
+### 13.4 修改 `/test` 角色
 
 当前需要改两处：
 
@@ -442,7 +522,7 @@ python -m unittest web.tests.test_selfplay_openings
 
 - 把角色名、开场白、人格设定、测试重点抽成共享配置，减少重复。
 
-## 13. 当前耦合情况
+## 14. 当前耦合情况
 
 低耦合做得较好的部分：
 
@@ -463,7 +543,7 @@ python -m unittest web.tests.test_selfplay_openings
 3. 抽出 `llm_client.py`，统一模型调用和重试。
 4. 抽出 `session_store.py`，管理会话读写。
 
-## 14. 审核清单
+## 15. 审核清单
 
 人工审核小芯效果时，可以重点看：
 
@@ -476,7 +556,7 @@ python -m unittest web.tests.test_selfplay_openings
 - 危机场景中是否建议现实求助，而不是只靠小芯陪聊。
 - 回复是否仍像电子宠物/数字学长，而不是通用 AI 助手。
 
-## 15. 发布前检查
+## 16. 发布前检查
 
 提交前建议执行：
 

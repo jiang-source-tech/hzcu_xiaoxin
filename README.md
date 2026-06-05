@@ -18,9 +18,11 @@ xiaoxin/
 ├── web/                       # 网页版聊天 + 测试
 │   ├── app.py                 # Flask 后端（加载 SKILL → 调 LLM API）
 │   ├── test_self_play.py      # CLI 自对话测试脚本
+│   ├── test_relationship_v2.py # 关系闭环 v2 CLI 测试脚本
 │   ├── static/
 │   │   ├── index.html         # 聊天界面
-│   │   └── test.html          # AI 自对话可视化测试页
+│   │   ├── test.html          # AI 自对话可视化测试页
+│   │   └── relationship-v2-test.html # 关系闭环每日 LLM 对话回放页
 │   └── requirements.txt
 └── .gitignore
 ```
@@ -50,6 +52,7 @@ python app.py
 浏览器访问：
 - 聊天界面：http://localhost:5000
 - 自对话测试：http://localhost:5000/test
+- 关系闭环测试：http://localhost:5000/relationship-test
 
 ### 4. CLI 自对话测试
 
@@ -62,6 +65,27 @@ python test_self_play.py --scenario full      # 完整学期
 
 # 全部场景
 python test_self_play.py --scenario all
+```
+
+### 5. 关系闭环 v2 测试
+
+关系闭环测试用于观察同一个用户跨天回来时，小芯的状态是否自然接续和迁移。
+
+- Web 页面：http://localhost:5000/relationship-test
+- 页面形态：每日 LLM 对话回放，展示用户模拟 LLM、小芯 LLM、状态条、hook、违规提示和质量裁判评分
+- 注意：`/relationship-v2-test` 已移除，不再作为访问入口
+
+```bash
+cd web
+
+# 运行全部关系闭环场景
+python test_relationship_v2.py
+
+# 只运行一个场景
+python test_relationship_v2.py --scene anxious_prospective
+
+# 跳过质量裁判 LLM，只跑规则评估
+python test_relationship_v2.py --skip-judge
 ```
 
 ## 技术栈

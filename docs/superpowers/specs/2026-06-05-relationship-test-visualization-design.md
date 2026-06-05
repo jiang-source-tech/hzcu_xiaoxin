@@ -1,5 +1,39 @@
 # 关系闭环可视化测试页设计
 
+## 当前实现状态（2026-06-05）
+
+当前关系闭环 Web 测试已经升级到 v2。对外只保留一个访问入口：
+
+```text
+http://localhost:5000/relationship-test
+```
+
+`/relationship-v2-test` 已移除，不再作为页面入口。页面文件仍是：
+
+```text
+web/static/relationship-v2-test.html
+```
+
+这是内部静态文件名，不是浏览器访问路径。
+
+当前页面是“每日 LLM 对话回放”：
+
+- 用户模拟 LLM 根据 `web/scenes/*.json` 的角色卡和 intent 生成自然用户消息。
+- 小信 LLM 走真实 `/api/chat` 或 `/api/greeting` 管线。
+- 规则评估器检查状态探针、内容探针、边界和回复完整性。
+- 质量裁判 LLM 对完整场景评分。
+- 页面按 day 展示用户 LLM、小信 LLM、阶段、主题、hook、表情、动作和违规解释。
+
+当前有效接口：
+
+```text
+GET  /relationship-test
+GET  /api/v2/relationship-selfplay/scenes
+POST /api/v2/relationship-selfplay/run
+```
+
+旧接口 `/api/relationship-selfplay/personas` 和 `/api/relationship-selfplay/run` 属于 v1 可视化方案；当前 v2 页面不使用它们。
+
 ## 1. 设计目标
 
 现有 `/test` 页面用于观察一段 AI 自对话，而关系闭环测试关注的是“同一个用户跨天回来时，小信的关系状态如何变化”。因此需要一个新的可视化页面：
@@ -69,11 +103,11 @@ web/test_relationship_self_play.py
 
 web/app.py
   GET  /relationship-test
-  POST /api/relationship-selfplay/run
-  GET  /api/relationship-selfplay/personas
+  POST /api/v2/relationship-selfplay/run
+  GET  /api/v2/relationship-selfplay/scenes
 
-web/static/relationship-test.html
-  关系闭环可视化页面
+web/static/relationship-v2-test.html
+  关系闭环每日 LLM 对话回放页面
 ```
 
 这样后续不会出现两套逻辑：
@@ -84,22 +118,22 @@ web/static/relationship-test.html
 
 ## 4. 后端 API 设计
 
-### 4.1 获取 persona 列表
+### 4.1 获取 scene 列表
 
 ```http
-GET /api/relationship-selfplay/personas
+GET /api/v2/relationship-selfplay/scenes
 ```
 
 返回：
 
 ```json
 {
-  "personas": [
+  "scenes": [
     {
-      "id": "anxious_prospective",
+      "scene_id": "anxious_prospective",
       "name": "焦虑准新生",
       "description": "课程焦虑、次日问候、开学阶段迁移、拒绝旧话题。",
-      "steps": 5
+      "episode_count": 5
     }
   ]
 }
@@ -107,32 +141,32 @@ GET /api/relationship-selfplay/personas
 
 用途：
 
-- 前端渲染 persona 下拉框。
-- 避免前端手写 persona 列表，减少和 CLI 配置重复。
+- 前端渲染 scene 下拉框。
+- 避免前端手写场景列表，减少和 `web/scenes/*.json` 重复。
 
 ### 4.2 运行关系闭环测试
 
 ```http
-POST /api/relationship-selfplay/run
+POST /api/v2/relationship-selfplay/run
 ```
 
 请求：
 
 ```json
 {
-  "persona": "all",
-  "days": null,
-  "live": false,
-  "show_app_log": false
+  "scene": "all",
+  "seed": null,
+  "skip_judge": false,
+  "max_days": null
 }
 ```
 
 字段说明：
 
-- `persona`：`all` 或具体 persona id。
-- `days`：只运行 `day <= N` 的步骤，默认为完整轨迹。
-- `live`：是否调用真实模型。默认 `false`，使用离线模拟回复。
-- `show_app_log`：是否返回底层 app 调试日志。第一版可以先不实现。
+- `scene`：`all` 或具体 scene id。
+- `seed`：可选随机种子，用于复现用户模拟 LLM 生成。
+- `skip_judge`：是否跳过质量裁判 LLM。
+- `max_days`：只运行 `day <= N` 的 episode，默认为完整轨迹。
 
 返回结构直接沿用 CLI 报告：
 
@@ -192,10 +226,10 @@ POST /api/relationship-selfplay/run
 GET /relationship-test
 ```
 
-返回：
+当前实现返回：
 
 ```python
-return app.send_static_file("relationship-test.html")
+return app.send_static_file("relationship-v2-test.html")
 ```
 
 ## 5. 前端页面设计
@@ -206,16 +240,16 @@ return app.send_static_file("relationship-test.html")
 
 控件：
 
-- Persona 下拉框：`all`、焦虑准新生、竞赛兴趣新生、社恐新生、拒绝追问用户等。
-- 模式切换：`离线模拟` / `真实模型`。
+- Scene 下拉框：`all`、焦虑准新生、竞赛兴趣新生、社恐新生、拒绝旧话题等。
+- 跳过质量裁判开关：只跳过裁判 LLM，不跳过用户模拟 LLM 或小信真实管线。
+- Seed 输入：用于复现用户模拟 LLM 的随机生成。
 - Days 输入或下拉：全部、Day 0、Day 1、Day 3、Day 7、Day 8。
 - 开始按钮。
 - 清空按钮。
 
 注意：
 
-- 默认模式必须是离线模拟，避免误触真实 API。
-- `真实模型` 旁边需要有明确状态提示，但不要用大段说明占页面。
+- 默认会走真实小信管线；如果只想更快看规则结果，可以勾选“跳过质量裁判”。
 
 ### 5.2 总览区
 
@@ -235,9 +269,9 @@ return app.send_static_file("relationship-test.html")
 - `failed`
 - `mode`
 
-### 5.3 Persona 结果列表
+### 5.3 Scene 结果列表
 
-每个 persona 用一个可折叠结果块：
+每个 scene 用一个可折叠结果块：
 
 ```text
 [PASS] 焦虑准新生      score 10
@@ -273,7 +307,7 @@ action：idle_wave 0.3
 
 ### 5.5 违规展示
 
-违规项按 record 展示，同时在 persona 顶部聚合：
+违规项按 record 展示，同时在 scene 顶部聚合：
 
 ```text
 关系越界表达：我一直记得你
@@ -292,79 +326,60 @@ next_hook active 错误：期望 false，实际 true
 
 ```text
 页面加载
-  -> GET /api/relationship-selfplay/personas
-  -> 渲染 persona 下拉框
+  -> GET /api/v2/relationship-selfplay/scenes
+  -> 渲染 scene 下拉框
 
 点击开始
   -> 禁用按钮，显示 running 状态
-  -> POST /api/relationship-selfplay/run
-  -> 成功：渲染总览、persona 列表、时间线
+  -> POST /api/v2/relationship-selfplay/run
+  -> 流式接收 episode / quality_judge / complete 事件
+  -> 成功：渲染场景结果、每日 LLM 对话回放、状态条和违规项
   -> 失败：显示错误条
   -> 恢复按钮
 ```
 
-第一版可以不做流式输出。原因：
+当前实现使用 fetch 读取 SSE 格式流式响应，逐步渲染：
 
-- 离线模拟运行很快。
-- 真实模型模式可能慢，但可以先用 loading 状态。
-- 流式进度会增加后端复杂度，等 CLI/API 稳定后再做。
+- `episode`：单个 day 的用户 LLM / 小信 LLM 对话和状态。
+- `quality_judge`：质量裁判评分。
+- `complete`：场景最终 verdict、notes 和 seed。
 
 ## 7. 后端实现细节
 
-### 7.1 runner 拆分
+### 7.1 v2 场景执行器
 
-从 `web/test_relationship_self_play.py` 拆出：
+当前 v2 使用 `web/scene_runner.py` 作为关系闭环场景执行器：
 
 ```text
-PERSONAS
-ScriptedClient
-run_persona()
+load_all_scenes()
+run_scene_streaming()
 run_suite()
-evaluate_expectations()
-relation_violations()
+compute_overall_result()
+summarize_conversation()
 ```
 
-保留在 CLI 脚本中的内容：
+职责划分：
 
-```text
-parse_args()
-print_report()
-save_report()
-main()
-```
-
-拆分后导入关系：
-
-```text
-test_relationship_self_play.py
-  -> import relationship_self_play_runner as runner
-
-app.py
-  -> import relationship_self_play_runner as relationship_runner
-
-tests
-  -> import relationship_self_play_runner
-```
+- `web/scenes/*.json` 保存场景脚本，不再把 persona 硬编码在 runner 里。
+- `web/user_simulator.py` 负责用户模拟 LLM。
+- `web/app.py` 的 `/api/v2/relationship-selfplay/run` 调用 `run_scene_streaming()`。
+- `web/test_relationship_v2.py` 调用 `run_suite()` 作为 CLI 入口。
 
 ### 7.2 临时数据目录
 
-API 默认应使用临时目录运行测试，避免污染真实用户数据：
+Web 运行关系闭环 v2 时，`scene_runner.py` 会创建临时数据目录，测试 user id 使用 `rel_v2_{scene_id}`，避免污染真实用户状态。
 
-```python
-with tempfile.TemporaryDirectory(prefix="xiaoxin_relationship_web_") as tmp:
-    report = relationship_runner.run_suite(..., data_dir=Path(tmp))
-```
+每个场景开始前会清理临时目录内对应的 relationship、session、memory、growth 文件。这样同一次测试内可以观察跨 day 状态变化，不会把测试状态写回真实 `skills/xiaoxin-senior/data/`。
 
-如果未来要保存历史报告，再另设报告目录，不要把测试状态写进真实 `skills/xiaoxin-senior/data/`。
+### 7.3 skip judge 语义
 
-### 7.3 live 模式限制
+当前页面的“跳过质量裁判”只跳过 `quality_judge.py` 的裁判 LLM：
 
-`live=true` 会调用真实模型，应满足：
+- 用户模拟 LLM 仍会生成自然用户消息。
+- 小信仍走真实 `/api/chat` 或 `/api/greeting` 管线。
+- 规则评估器仍会检查状态、边界、内容探针和回复完整性。
 
-- 默认关闭。
-- 如果没有真实 `DEEPSEEK_API_KEY`，返回明确错误。
-- 前端按钮文案显示“真实模型”而不是隐晦开关。
-- 第一版不需要并发跑多个 live persona，可以提示耗时较长。
+因此 `skip_judge=true` 适合快速看规则问题，但不等于离线模拟，也不代表完全不调用模型。
 
 ## 8. 测试计划
 
@@ -378,27 +393,27 @@ web/tests/test_relationship_self_play_api.py
 
 覆盖：
 
-- `GET /api/relationship-selfplay/personas` 返回 persona 列表。
-- `POST /api/relationship-selfplay/run` 默认离线模式跑通。
-- `persona=anxious_prospective` 返回 records 且包含 contextual greeting。
-- `persona=reject_old_topic` 最后一轮 greeting 不包含课程节奏。
-- 非法 persona 返回 400。
+- `GET /api/v2/relationship-selfplay/scenes` 返回 scene 列表。
+- `POST /api/v2/relationship-selfplay/run` 跑通关系闭环 v2 场景。
+- `scene=anxious_prospective` 返回 records 且包含 contextual greeting。
+- `scene=reject_old_topic` 最后一轮不继续追问旧话题。
+- 非法 scene 返回错误事件或 400。
 
 ### 8.2 前端结构测试
 
 可沿用现有 `test_selfplay_layout.py` 的文本断言风格，新增：
 
 ```text
-web/tests/test_relationship_test_page.py
+web/tests/test_relationship_v2_page.py
 ```
 
 覆盖：
 
-- 页面存在 persona select。
-- 页面调用 `/api/relationship-selfplay/personas`。
-- 页面调用 `/api/relationship-selfplay/run`。
+- 页面存在 scene select。
+- 页面调用 `/api/v2/relationship-selfplay/scenes`。
+- 页面调用 `/api/v2/relationship-selfplay/run`。
 - 页面展示 `next_hook`、`state`、`violations` 字段。
-- 页面有真实模型模式开关。
+- 页面展示每日 LLM 回放和可读状态错误。
 
 ### 8.3 手工验证
 
@@ -417,19 +432,19 @@ http://localhost:5000/relationship-test
 
 验证：
 
-- 默认离线模式可以在数秒内返回。
-- `all` 能展示 4 个 persona。
+- `/relationship-test` 可以打开每日 LLM 对话回放页面。
+- `all` 能展示所有 `web/scenes/*.json` 场景。
 - 焦虑准新生 Day 1 第一次 greeting 接课程节奏，第二次 generic。
-- 拒绝追问用户 Day 3 不再提课程节奏。
+- 拒绝旧话题场景不再持续追问旧 hook。
 - 竞赛兴趣新生面对源文件/联系人请求不越界。
 
 ## 9. MVP 实现顺序
 
 建议分 5 步：
 
-1. 拆出 `relationship_self_play_runner.py`。
-2. 给 Flask 增加 `/relationship-test`、`/api/relationship-selfplay/personas`、`/api/relationship-selfplay/run`。
-3. 新建 `web/static/relationship-test.html`，先做可用页面。
+1. 使用 `scene_runner.py` 承载 v2 场景运行。
+2. 给 Flask 保留 `/relationship-test`，并提供 `/api/v2/relationship-selfplay/scenes`、`/api/v2/relationship-selfplay/run`。
+3. 使用 `web/static/relationship-v2-test.html` 作为可视化页面。
 4. 补后端 API 测试和前端结构测试。
 5. 手工跑浏览器页面，确认时间线和违规项展示清楚。
 
@@ -457,10 +472,9 @@ MVP 不做：
 完成后应满足：
 
 - 浏览器访问 `/relationship-test` 可运行关系闭环测试。
-- 页面默认离线模式，不依赖真实模型。
-- 页面能展示每个 persona 的多日时间线。
+- 页面能展示每个 scene 的多日时间线。
 - 页面能展示 `state`、`next_hook`、`companion_action`。
 - 页面能明确标红违规项。
-- 后端 API 复用 CLI 测试引擎，没有复制一套 persona 或评估逻辑。
+- 后端 API 复用 `scene_runner.py`，没有复制一套场景或评估逻辑。
 - CLI 仍可独立运行，不依赖页面。
 
