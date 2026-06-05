@@ -31,7 +31,6 @@ _PRE_ENROLLMENT_PATTERNS = [
     r"录取",
     r"通知书",
     r"报到",
-    r"报道",
     r"预报到",
     r"入学前",
     r"还没开学",
@@ -211,21 +210,27 @@ def analyze(user_msg: str, current_state: dict | None = None) -> dict:
 
 
 def _detect_stage_signal(text: str, current_state: dict | None = None) -> str:
-    if _matches_any(text, _EARLY_FRESHMAN_PATTERNS):
-        return "early_freshman"
-    if _matches_any(text, _PRE_ENROLLMENT_PATTERNS):
-        return "pre_enrollment"
+    current = None
     if isinstance(current_state, dict):
         user_stage = current_state.get("user_stage")
         if user_stage in _STAGE_SIGNALS:
-            return user_stage
+            current = user_stage
+
+    if _matches_any(text, _EARLY_FRESHMAN_PATTERNS):
+        return "early_freshman"
+    if _matches_any(text, _PRE_ENROLLMENT_PATTERNS):
+        if current == "early_freshman":
+            return current
+        return "pre_enrollment"
+    if current:
+        return current
     return "prospective"
 
 
 def _detect_mood(text: str) -> str:
     if _contains_any(text, _CRISIS_KEYWORDS):
         return "crisis"
-    if _contains_any(text, _FRUSTRATED_KEYWORDS):
+    if _is_frustrated(text):
         return "frustrated"
     if _contains_any(text, _ANXIOUS_KEYWORDS):
         return "anxious"
@@ -253,7 +258,17 @@ def _detect_topic(text: str) -> str:
 
 
 def _is_refusal(text: str) -> bool:
+    if "不是不聊" in text or "不是不想聊" in text:
+        return False
     return _contains_any(text, _REFUSAL_KEYWORDS)
+
+
+def _is_frustrated(text: str) -> bool:
+    if "麻烦" in text:
+        text = text.replace("麻烦", "")
+    if re.search(r"(好烦|很烦|太烦|烦死|烦躁|烦透|别聊|不想聊|别提|受够|火大|讨厌)", text):
+        return True
+    return False
 
 
 def _memory_for(topic: str, mood: str) -> tuple[bool, str | None, str | None]:

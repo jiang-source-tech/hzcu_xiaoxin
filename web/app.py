@@ -18,6 +18,8 @@ from flask import Flask, jsonify, render_template, request
 from openai import OpenAI
 
 import boundary_guard as guard
+import relationship_state
+import turn_analyzer
 
 load_dotenv()
 
@@ -101,8 +103,12 @@ def run_tool(action: str, user_id: str, **kwargs) -> str:
         return ""
 
 
-def build_system_prompt(user_id: str) -> str:
-    """构建完整的 system prompt = SKILL.md + 记忆 + 成长"""
+def build_system_prompt(
+    user_id: str,
+    relationship: dict | None = None,
+    turn_analysis: dict | None = None,
+) -> str:
+    """构建完整的 system prompt = SKILL.md + 记忆 + 成长 + 关系状态"""
     parts = [load_skill_md()]
 
     # 记忆上下文
@@ -115,7 +121,13 @@ def build_system_prompt(user_id: str) -> str:
     if growth and "一起走过的路" in growth:
         parts.append("\n" + growth)
 
-    parts.append("\n记住：你是小信，不是AI助手。用简短口语回复，每次2-4句话。带上表情标记。")
+    if relationship:
+        parts.append("\n" + relationship_state.prompt_summary(relationship, turn_analysis))
+
+    parts.append(
+        "\n记住：你是小信，不是AI助手。用简短口语回复，每次2-4句话。"
+        "带上表情标记。接续旧线索时要轻，不要显得一直惦记用户。"
+    )
     return "\n\n".join(parts)
 
 
@@ -124,7 +136,7 @@ def build_system_prompt(user_id: str) -> str:
 def parse_expression(text: str) -> tuple[str, str]:
     """解析回复中的表情标记 [smile] [wink] 等，拆成纯文本和表情类型"""
     text = guard.strip_reasoning_artifacts(text)
-    pattern = r'\[(smile|cheer|think|proud|wink|wave|surprise|love|sweat|sad)\]'
+    pattern = r'\[(smile|soft_smile|cheer|think|proud|wink|wave|surprise|love|sweat|sad)\]'
     match = re.search(pattern, text)
     if match:
         exp = match.group(1)
@@ -290,7 +302,16 @@ def _ensure_session(user_id: str) -> str:
     return sid
 
 
-def record_chat_reply(user_id: str, sid: str, history: list[dict], user_msg: str, reply: str) -> dict:
+def record_chat_reply(
+    user_id: str,
+    sid: str,
+    history: list[dict],
+    user_msg: str,
+    reply: str,
+    relationship: dict | None = None,
+    next_hook: dict | None = None,
+    companion_action: dict | None = None,
+) -> dict:
     """Append a chat turn to memory/session storage and return API payload."""
     clean_reply, expression = parse_expression(reply)
 
@@ -317,13 +338,20 @@ def record_chat_reply(user_id: str, sid: str, history: list[dict], user_msg: str
 
     auto_save_memory(user_id, user_msg, clean_reply)
 
-    return {
+    payload = {
         "reply": clean_reply,
         "speech": guard.to_speech_text(clean_reply),
         "expression": expression,
         "model": MODEL,
         "session_id": sid,
     }
+    if relationship is not None:
+        payload["state"] = relationship_state.public_state(relationship)
+    if next_hook is not None:
+        payload["next_hook"] = next_hook
+    if companion_action is not None:
+        payload["companion_action"] = companion_action
+    return payload
 
 
 # ─── API 路由 ───────────────────────────────────────────────────────────
@@ -332,6 +360,14 @@ def record_chat_reply(user_id: str, sid: str, history: list[dict], user_msg: str
 @app.route("/")
 def index():
     return app.send_static_file("index.html")
+
+
+@app.route("/api/greeting", methods=["GET"])
+def greeting():
+    """返回当天打开页面或设备唤醒时的小信轻量问候。"""
+    user_id = request.args.get("user_id", "default")
+    today = request.args.get("today")
+    return jsonify(relationship_state.greeting_payload(DATA_DIR, user_id, today=today))
 
 
 @app.route("/api/chat", methods=["POST"])
@@ -348,15 +384,28 @@ def chat():
 
     sid = _ensure_session(user_id)
     _, history = active_conversations[user_id]
+    relationship = relationship_state.load_state(DATA_DIR, user_id)
+    turn_analysis = turn_analyzer.analyze(user_msg, relationship)
 
     guarded_reply = guard.template_reply(user_msg)
     if guarded_reply:
-        payload = record_chat_reply(user_id, sid, history, user_msg, guarded_reply)
+        relationship = relationship_state.update_after_turn(relationship, turn_analysis)
+        relationship_state.save_state(DATA_DIR, user_id, relationship)
+        payload = record_chat_reply(
+            user_id,
+            sid,
+            history,
+            user_msg,
+            guarded_reply,
+            relationship=relationship,
+            next_hook=relationship.get("next_hook"),
+            companion_action=relationship_state.companion_action(relationship),
+        )
         print(f"[小信/guard] > {payload['reply']}")
         return jsonify(payload)
 
     # 构建 system prompt
-    system_prompt = build_system_prompt(user_id)
+    system_prompt = build_system_prompt(user_id, relationship, turn_analysis)
     print(f"[SYSTEM] prompt length: {len(system_prompt)} chars")
 
     # 构建 messages（只送最近 20 条给 API）
@@ -407,7 +456,18 @@ def chat():
     if is_fragmented_xiaoxin_reply(reply) or is_boundary_violating_xiaoxin_reply(user_msg, reply):
         reply = fallback_xiaoxin_reply(user_msg)
 
-    payload = record_chat_reply(user_id, sid, history, user_msg, reply)
+    relationship = relationship_state.update_after_turn(relationship, turn_analysis)
+    relationship_state.save_state(DATA_DIR, user_id, relationship)
+    payload = record_chat_reply(
+        user_id,
+        sid,
+        history,
+        user_msg,
+        reply,
+        relationship=relationship,
+        next_hook=relationship.get("next_hook"),
+        companion_action=relationship_state.companion_action(relationship),
+    )
     print(f"[小信] > {payload['reply']}")
     print(f"[表情] {payload['expression']}")
     return jsonify(payload)
