@@ -1,15 +1,15 @@
-# 小信记忆协议 · Memory Protocol
+# 小芯记忆协议 · Memory Protocol
 
 ## 概述
 
-小信运行在嵌入式设备上，对话记忆由 `tools/memory_manager.py` 在本地管理。
+小芯运行在嵌入式设备上，对话记忆由 `tools/memory_manager.py` 在本地管理。
 每次对话前后，系统自动执行记忆的加载和保存。
 
 ---
 
 ## Layer 1：对话前 → 加载记忆
 
-每次唤醒小信时，系统调用：
+每次唤醒小芯时，系统调用：
 
 ```bash
 python tools/memory_manager.py --action load --data-dir ./data --user-id {user_id} --format prompt
@@ -18,7 +18,7 @@ python tools/memory_manager.py --action load --data-dir ./data --user-id {user_i
 这会将当前有效的记忆以结构化文本注入 system prompt：
 
 ```
-## 关于这个新生（小信记得的）
+## 关于这个新生（小芯记得的）
 1. [称呼] ● 叫我小明
 2. [专业] ● 电子信息工程大一
 3. [兴趣] ◐ 对机器人有点兴趣
@@ -47,7 +47,7 @@ python tools/memory_manager.py --action load --data-dir ./data --user-id {user_i
 用户提到相关话题时才唤起：
 
 > 用户：「最近在看Python」
-> 小信：「我记得你说过对机器人感兴趣，Python搞ROS特别顺手，可以试试」
+> 小芯：「我记得你说过对机器人感兴趣，Python搞ROS特别顺手，可以试试」
 
 ### 不强行回忆（模糊 ○ 记忆）
 
@@ -128,5 +128,5 @@ python tools/memory_manager.py --action decay --data-dir ./data --user-id {user_
 
 - 所有记忆存储在设备本地 `data/memory_{user_id}.json`，不上传云端
 - 如果设备被多人使用，每个用户通过 `--user-id` 隔离
-- 用户说「小信，忘掉关于我的所有信息」→ 删除对应 memory.json 文件
-- 用户说「小信，忘掉XXX」→ 从 memory.json 中删除匹配的记忆条目
+- 用户说「小芯，忘掉关于我的所有信息」→ 删除对应 memory.json 文件
+- 用户说「小芯，忘掉XXX」→ 从 memory.json 中删除匹配的记忆条目
