@@ -736,7 +736,7 @@ def test_page():
 
 @app.route("/relationship-test")
 def relationship_test_page():
-    return app.send_static_file("relationship-test.html")
+    return app.send_static_file("relationship-v2-test.html")
 
 
 @app.route("/api/relationship-selfplay/personas", methods=["GET"])
