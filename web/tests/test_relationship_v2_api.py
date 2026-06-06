@@ -1,0 +1,85 @@
+import os
+import sys
+import unittest
+from pathlib import Path
+from unittest.mock import patch
+
+os.environ.setdefault("DEEPSEEK_API_KEY", "test-key")
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+import app as app_module
+
+
+class RelationshipV2ApiTest(unittest.TestCase):
+    def setUp(self):
+        self.client = app_module.app.test_client()
+
+    def test_run_accepts_mode_and_turns_per_day(self):
+        captured = {}
+
+        def fake_stream(**kwargs):
+            captured.update(kwargs)
+            yield {
+                "event": "complete",
+                "data": {
+                    "scene_id": "demo",
+                    "name": "Demo",
+                    "description": "",
+                    "seed": 7,
+                    "verdict": "PASS",
+                    "rule_violations_count": 0,
+                    "quality_avg_score": 0,
+                    "notes": "",
+                    "records": [],
+                    "quality_judge": None,
+                },
+            }
+
+        with patch.object(app_module.scene_runner_v2, "run_scene_streaming", side_effect=fake_stream):
+            response = self.client.post(
+                "/api/v2/relationship-selfplay/run",
+                json={
+                    "scene": "anxious_prospective",
+                    "seed": 7,
+                    "skip_judge": True,
+                    "mode": "mixed",
+                    "turns_per_day": 12,
+                    "max_days": 2,
+                },
+            )
+
+        body = response.get_data(as_text=True)
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("event: complete", body)
+        self.assertEqual(captured["scene_id"], "anxious_prospective")
+        self.assertEqual(captured["seed"], 7)
+        self.assertTrue(captured["skip_quality_judge"])
+        self.assertEqual(captured["mode"], "mixed")
+        self.assertEqual(captured["turns_per_day"], 12)
+        self.assertEqual(captured["max_days"], 2)
+
+    def test_run_rejects_invalid_mode_before_streaming(self):
+        response = self.client.post(
+            "/api/v2/relationship-selfplay/run",
+            json={"mode": "wild", "turns_per_day": 8},
+        )
+
+        self.assertEqual(response.status_code, 400)
+        payload = response.get_json()
+        self.assertIn("mode", payload["error"])
+
+    def test_run_rejects_invalid_turns_per_day_before_streaming(self):
+        for value in (0, -1, "many"):
+            with self.subTest(value=value):
+                response = self.client.post(
+                    "/api/v2/relationship-selfplay/run",
+                    json={"mode": "mixed", "turns_per_day": value},
+                )
+
+                self.assertEqual(response.status_code, 400)
+                payload = response.get_json()
+                self.assertIn("turns_per_day", payload["error"])
+
+
+if __name__ == "__main__":
+    unittest.main()

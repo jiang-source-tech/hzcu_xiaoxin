@@ -969,6 +969,20 @@ def v2_relationship_run():
     skip_judge = bool(data.get("skip_judge", False))
     raw_max_days = data.get("max_days")
     max_days = int(raw_max_days) if raw_max_days is not None else None
+    mode = str(data.get("mode", "regression")).strip() or "regression"
+    valid_modes = {"regression", "mixed", "pressure"}
+    if mode not in valid_modes:
+        return jsonify({"error": "mode must be one of: regression, mixed, pressure"}), 400
+
+    raw_turns_per_day = data.get("turns_per_day")
+    turns_per_day = None
+    if raw_turns_per_day not in (None, "", "default"):
+        try:
+            turns_per_day = int(raw_turns_per_day)
+        except (TypeError, ValueError):
+            return jsonify({"error": "turns_per_day must be a positive integer"}), 400
+        if turns_per_day < 1 or turns_per_day > 30:
+            return jsonify({"error": "turns_per_day must be between 1 and 30"}), 400
 
     def generate():
         try:
@@ -977,6 +991,8 @@ def v2_relationship_run():
                 seed=seed,
                 skip_quality_judge=skip_judge,
                 max_days=max_days,
+                mode=mode,
+                turns_per_day=turns_per_day,
                 chat_fn=lambda uid, msg, dd: chat_core(uid, msg, dd),
                 greeting_fn=lambda uid, today, dd: relationship_state.greeting_payload(
                     Path(dd), uid, today=today
