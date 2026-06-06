@@ -80,6 +80,35 @@ class RelationshipV2ApiTest(unittest.TestCase):
                 payload = response.get_json()
                 self.assertIn("turns_per_day", payload["error"])
 
+    def test_run_with_real_stream_accepts_pressure_options(self):
+        def fake_chat_core(user_id, message, data_dir):
+            return {
+                "reply": "I hear the concern. Let's sort out the first week step by step.",
+                "speech": "I hear the concern. Let's sort out the first week step by step.",
+                "expression": "warm",
+            }
+
+        with patch.object(
+            app_module.scene_runner_v2.user_simulator,
+            "generate_user_message",
+            return_value="I am worried about the first week course pace.",
+        ), patch.object(app_module, "chat_core", side_effect=fake_chat_core):
+            response = self.client.post(
+                "/api/v2/relationship-selfplay/run",
+                json={
+                    "scene": "anxious_prospective",
+                    "mode": "regression",
+                    "turns_per_day": 3,
+                    "skip_judge": True,
+                    "max_days": 0,
+                },
+            )
+
+        body = response.get_data(as_text=True)
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn("unexpected keyword argument", body)
+        self.assertRegex(body, r"event: (episode|complete)")
+
 
 if __name__ == "__main__":
     unittest.main()

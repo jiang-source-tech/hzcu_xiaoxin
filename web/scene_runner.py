@@ -243,6 +243,8 @@ def run_scene_streaming(
     seed: int | None = None,
     skip_quality_judge: bool = False,
     max_days: int | None = None,
+    mode: str = "regression",
+    turns_per_day: int | None = None,
     chat_fn: Callable[[str, str, str], dict[str, Any]] | None = None,
     greeting_fn: Callable[[str, str, str], dict[str, Any]] | None = None,
     base_date: datetime | None = None,
