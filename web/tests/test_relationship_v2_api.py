@@ -69,7 +69,7 @@ class RelationshipV2ApiTest(unittest.TestCase):
         self.assertIn("mode", payload["error"])
 
     def test_run_rejects_invalid_turns_per_day_before_streaming(self):
-        for value in (0, -1, "many"):
+        for value in (0, -1, "many", 1.5, True):
             with self.subTest(value=value):
                 response = self.client.post(
                     "/api/v2/relationship-selfplay/run",

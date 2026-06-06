@@ -977,9 +977,16 @@ def v2_relationship_run():
     raw_turns_per_day = data.get("turns_per_day")
     turns_per_day = None
     if raw_turns_per_day not in (None, "", "default"):
-        try:
-            turns_per_day = int(raw_turns_per_day)
-        except (TypeError, ValueError):
+        if isinstance(raw_turns_per_day, bool):
+            return jsonify({"error": "turns_per_day must be a positive integer"}), 400
+        if isinstance(raw_turns_per_day, int):
+            turns_per_day = raw_turns_per_day
+        elif isinstance(raw_turns_per_day, str):
+            stripped_turns_per_day = raw_turns_per_day.strip()
+            if not stripped_turns_per_day.lstrip("-+").isdigit():
+                return jsonify({"error": "turns_per_day must be a positive integer"}), 400
+            turns_per_day = int(stripped_turns_per_day)
+        else:
             return jsonify({"error": "turns_per_day must be a positive integer"}), 400
         if turns_per_day < 1 or turns_per_day > 30:
             return jsonify({"error": "turns_per_day must be between 1 and 30"}), 400
