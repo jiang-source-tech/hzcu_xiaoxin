@@ -565,7 +565,7 @@
       data.scenes.forEach(s => {
         const opt = document.createElement('option');
         opt.value = s.scene_id;
-        opt.textContent = `${s.name} ・ ${s.turn_count || s.episode_count} turns`;
+        opt.textContent = `${s.name} ・ ${s.episode_count} 个交互日`;
         sel.appendChild(opt);
       });
     } catch (e) {

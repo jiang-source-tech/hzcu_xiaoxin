@@ -956,11 +956,6 @@ def v2_relationship_scenes():
             "name": s.get("name", s["scene_id"]),
             "description": s.get("description", ""),
             "episode_count": len(s["episodes"]),
-            "turn_count": sum(
-                1 if ep.get("action") == "greeting"
-                else len(scene_runner_v2.episode_chat_intents(ep))
-                for ep in s["episodes"]
-            ),
         }
         for s in scenes
     ]
