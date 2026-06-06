@@ -536,6 +536,10 @@
       </select>
     </div>
     <div>
+      <label for="maxDaysInput">最大天数（可选）</label>
+      <input type="number" id="maxDaysInput" placeholder="不限" min="1">
+    </div>
+    <div>
       <label for="seedInput">Seed（可选）</label>
       <input type="number" id="seedInput" placeholder="随机">
     </div>
@@ -565,7 +569,7 @@
       data.scenes.forEach(s => {
         const opt = document.createElement('option');
         opt.value = s.scene_id;
-        opt.textContent = `${s.name} ・ ${s.episode_count} 个交互日`;
+        opt.textContent = s.name;
         sel.appendChild(opt);
       });
     } catch (e) {
@@ -843,6 +847,7 @@
     const scene = document.getElementById('sceneSelect').value;
     const mode = document.getElementById('modeSelect').value;
     const turnsPerDay = parseInt(document.getElementById('turnsPerDaySelect').value, 10);
+    const maxDaysRaw = document.getElementById('maxDaysInput').value;
     const seedRaw = document.getElementById('seedInput').value;
     const skipJudge = document.getElementById('skipJudge').checked;
     const statusEl = document.getElementById('statusLine');
@@ -871,7 +876,8 @@
         mode: mode,
         turns_per_day: turnsPerDay,
         seed: seedRaw ? parseInt(seedRaw) : null,
-        skip_judge: skipJudge
+        skip_judge: skipJudge,
+        max_days: maxDaysRaw ? parseInt(maxDaysRaw) : null
       })
     }).then(response => {
       const reader = response.body.getReader();
