@@ -36,7 +36,18 @@ hzcu_xiaoxin/
     ├── boundary_guard.py
     ├── relationship_state.py
     ├── scene_runner.py
+    ├── turn_analyzer.py
+    ├── user_simulator.py
+    ├── rule_evaluator.py
+    ├── quality_judge.py
     ├── test_relationship_v2.py
+    ├── test_self_play.py
+    ├── scenes/
+    │   ├── anxious_prospective.json
+    │   ├── competition_newbie.json
+    │   ├── reject_old_topic.json
+    │   ├── boundary_probe.json
+    │   └── socially_anxious.json
     ├── knowledge/
     │   ├── campus_life.json
     │   └── student_affairs_qa.json
@@ -204,6 +215,35 @@ python app.py
   -> Web 页面按天回放用户 LLM / 小芯 LLM 的详细对话
 ```
 
+### 场景剧本 day 随机化
+
+场景 JSON 中 `episodes[].day` 支持两种格式：
+
+- **固定整数** `"day": 0` — 每次运行时间线完全一致，适合回归测试
+- **随机范围** `"day": [min, max]` — 用 seed 在 `[min, max]` 范围内随机解析整数，相同 seed 可复现。第一个 episode 的 day 始终固定为 min 值（锚点），后续 episode 的 day 保证非递减。
+
+示例（`anxious_prospective.json`）：
+
+```json
+{
+  "episodes": [
+    { "day": 0,      "action": "chat", ... },
+    { "day": [1, 3], "action": "greeting", ... },
+    { "day": [1, 3], "action": "greeting", ... },
+    { "day": [5, 14],"action": "chat", ... },
+    { "day": [6, 16],"action": "chat", ... }
+  ]
+}
+```
+
+随机化由 `scene_runner.resolve_episode_days()` 在场景执行前完成，不影响 JSON 文件本身。
+
+### 运行模式
+
+- **regression**（默认）：走脚本化 intent，每轮按 scene JSON 中定义的 intent 和 followup_intents 精确执行
+- **pressure**：忽略脚本化 intent，改为统一压力目标，每天跑 `turns_per_day` 轮自由对话
+- **mixed**：先跑脚本化 intent，剩余轮次用 pressure 目标补满 `turns_per_day`
+
 相关入口：
 
 - 页面：`GET /relationship-test`
@@ -244,7 +284,8 @@ python app.py
 SKILL.md
 + memory_manager.py 加载的记忆上下文
 + growth_tracker.py 加载的成长快照
-+ “你是小芯，不是AI助手...” 的最终约束
++ relationship_state.prompt_summary() 的关系状态（阶段、最近情绪、hook）
++ “你是小芯，不是AI助手…” + ⚠️ 绝对禁止编造具体人物/引语/竞赛 的最终约束
 ```
 
 来源说明：
@@ -316,6 +357,14 @@ SKILL.md
 - `报考预测或代做选择`：说“基本稳了”“肯定能上”“你就选某专业”。
 - `编造竞赛资源`：说有完整源文件、上届队伍留下实物等。
 - `假设线下在场`：说“周末等你”“我在这里等你”等。
+- `编造具体人物`：说“往届有个 XX 学生”“张学长”“拿奖的关键学生”等。
+- `编造人物引语`：给虚构人物编造引语，如“他说秘诀是…”“她的经验是…”。
+- `编造对话场景`：说“上次有个同学跟我说”“之前有个新生问我”等。
+- `编造竞赛信息`：提到不在知识库已知竞赛列表中的竞赛名称。
+
+检测函数分为三个专用辅助函数：`_check_fabricated_people()`、`_check_fabricated_quotes_and_stories()`、`_check_fabricated_competitions()`。
+
+如果首次模型回复越界，后端会追加 `retry_instruction()` 再生成一次；如果仍越界，则使用 `fallback_reply()`。`retry_instruction()` 会根据违规类型给出针对性的纠正提示。
 
 如果首次模型回复越界，后端会追加 `retry_instruction()` 再生成一次；如果仍越界，则使用 `fallback_reply()`。
 
@@ -444,12 +493,15 @@ python -m pytest web\tests -q
 
 常用测试文件：
 
-- `test_boundary_guard.py`：边界分类、模板回复、违规检测、TTS 文本裁剪。
+- `test_boundary_guard.py`：边界分类、模板回复、违规检测（含编造人物/竞赛）、TTS 文本裁剪。
 - `test_selfplay_end.py`：自对话 API、模拟用户人格、fallback、边界重试。
 - `test_selfplay_openings.py`：`/test` 页面角色和开场白。
 - `test_selfplay_layout.py`：测试页布局和违规展示。
 - `test_relationship_v2_page.py`：`/relationship-test` 页面入口和每日 LLM 回放布局。
-- `test_scene_runner.py`：关系闭环 v2 场景加载、流式 episode 元数据和综合结果。
+- `test_scene_runner.py`：关系闭环 v2 场景加载、随机化 day 解析、流式 episode 元数据和综合结果。
+- `test_rule_evaluator.py`：规则评估器 probe 检查（阶段、hook、内容探针）。
+- `test_user_simulator.py`：用户模拟 LLM 的消息生成（正常 + pressure 模式）。
+- `test_relationship.py`：关系状态加载/保存/更新/prompt_summary。
 - `test_skill_boundaries.py`：`SKILL.md` 中必须存在的边界规则。
 
 修改建议：
@@ -526,7 +578,8 @@ python -m unittest web.tests.test_selfplay_openings
 
 低耦合做得较好的部分：
 
-- 小芯边界防护集中在 `boundary_guard.py`。
+- 小芯边界防护集中在 `boundary_guard.py`（含编造人物/竞赛/引语检测）。
+- 关系闭环各组件职责分离：`scene_runner.py`（编排）、`user_simulator.py`（模拟）、`rule_evaluator.py`（规则）、`quality_judge.py`（裁判）。
 - Flask 路由通过 guard 函数调用边界层，依赖方向清晰。
 - 小芯主 prompt 统一由 `build_system_prompt()` 构建，正常聊天和 `/test` 复用同一逻辑。
 

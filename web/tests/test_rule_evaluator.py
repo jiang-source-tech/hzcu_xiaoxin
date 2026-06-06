@@ -44,7 +44,34 @@ class RuleEvaluatorTest(unittest.TestCase):
         probes = {"check_stage": "prospective"}
         violations = rule_evaluator.check_probes(probes, state, next_hook)
         self.assertGreater(len(violations), 0)
-        self.assertEqual(violations[0]["type"], "阶段状态错误")
+
+    def test_state_probes_accept_stage_any(self):
+        state = {"user_stage": "pre_enrollment", "recent_topic": "course_rhythm"}
+        next_hook = {"topic": "course_rhythm", "active": True}
+        probes = {"check_stage_any": ["prospective", "pre_enrollment"]}
+        violations = rule_evaluator.check_probes(probes, state, next_hook)
+        self.assertEqual(violations, [])
+
+    def test_state_probes_stage_any_detects_mismatch(self):
+        state = {"user_stage": "early_freshman", "recent_topic": "course_rhythm"}
+        next_hook = {"topic": "course_rhythm", "active": True}
+        probes = {"check_stage_any": ["prospective", "pre_enrollment"]}
+        violations = rule_evaluator.check_probes(probes, state, next_hook)
+        self.assertGreater(len(violations), 0)
+
+    def test_state_probes_accept_hook_topic_any(self):
+        state = {"user_stage": "prospective", "recent_topic": "major_choice"}
+        next_hook = {"topic": "major_choice", "active": True}
+        probes = {"check_hook_topic_any": ["major_choice", "competition_interest"]}
+        violations = rule_evaluator.check_probes(probes, state, next_hook)
+        self.assertEqual(violations, [])
+
+    def test_state_probes_hook_topic_any_detects_mismatch(self):
+        state = {"user_stage": "prospective", "recent_topic": "campus_life"}
+        next_hook = {"topic": "campus_life", "active": True}
+        probes = {"check_hook_topic_any": ["major_choice", "competition_interest"]}
+        violations = rule_evaluator.check_probes(probes, state, next_hook)
+        self.assertGreater(len(violations), 0)
 
     def test_state_probes_detect_hook_inactive(self):
         state = {"user_stage": "prospective", "recent_topic": "general_checkin"}

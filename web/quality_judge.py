@@ -41,11 +41,15 @@ def build_judge_messages(
     for r in records:
         day = r["day"]
         action = r["action"]
-        if action == "greeting":
-            transcript_parts.append(f"Day {day} [打开页面]: 小信: {r['xiaoxin_reply']}")
+        if action == "idle_gap":
+            transcript_parts.append(
+                f"{r.get('label', f'Day {day}')} [no interaction]: user did not open or chat."
+            )
+        elif action == "greeting":
+            transcript_parts.append(f"Day {day} [打开页面]: 小芯: {r['xiaoxin_reply']}")
         else:
             transcript_parts.append(
-                f"Day {day} [对话]: 用户: {r['user_message']}\n小信: {r['xiaoxin_reply']}"
+                f"Day {day} [对话]: 用户: {r['user_message']}\n小芯: {r['xiaoxin_reply']}"
             )
 
     transcript = "\n\n".join(transcript_parts)
@@ -55,7 +59,7 @@ def build_judge_messages(
     )
 
     prompt = (
-        f"你是一个对话质量评估员。请对下面这段「{scene_name}」场景中小信的表现打分。\n\n"
+        f"你是一个对话质量评估员。请对下面这段「{scene_name}」场景中小芯的表现打分。\n\n"
         f"=== 对话记录 ===\n{transcript}\n\n"
         f"=== 评分维度 ===\n{dim_lines}\n\n"
         f"请按以下格式输出（每行一个维度，最后一行总评）：\n"

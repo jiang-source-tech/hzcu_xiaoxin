@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>关系闭环测试 v2 · 小信</title>
+<title>关系闭环测试 v2 · 小芯</title>
 <style>
   :root {
     --bg: #f7f8fa;
@@ -281,6 +281,49 @@
     animation: fadeIn 0.35s cubic-bezier(0.16,1,0.3,1);
   }
   .episode-record:first-child { border-top: none; }
+  .day-section {
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    margin: 14px 0;
+    overflow: hidden;
+    background: var(--surface);
+  }
+  .day-head {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 12px;
+    background: var(--surface-soft);
+    cursor: pointer;
+  }
+  .day-title { font-weight: 700; }
+  .day-summary {
+    padding: 8px 12px;
+    font-size: 0.82rem;
+    color: var(--muted);
+    border-top: 1px solid var(--line);
+    white-space: pre-wrap;
+  }
+  .day-body.hidden { display: none; }
+  .idle-gap {
+    padding: 12px 0;
+  }
+  .idle-gap-box {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 12px;
+    border: 1px dashed var(--line);
+    border-radius: var(--radius);
+    background: var(--bg);
+    color: var(--muted);
+    font-size: 0.82rem;
+  }
+  .idle-gap-title {
+    color: var(--ink);
+    font-weight: 700;
+  }
   @keyframes fadeIn {
     from { opacity: 0; transform: translateY(8px); }
     to { opacity: 1; transform: translateY(0); }
@@ -367,6 +410,58 @@
   .chip.active { background: var(--green-soft); color: var(--green); border-color: var(--green); }
   .chip.warn { background: var(--gold-soft); color: var(--gold); border-color: var(--gold); }
 
+  /* Manual review */
+  .manual-review {
+    margin-top: 10px;
+    padding: 10px 12px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: var(--surface);
+  }
+  .manual-review-title {
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: var(--teal);
+    margin-bottom: 8px;
+  }
+  .review-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  .review-item {
+    min-width: 0;
+    padding: 8px;
+    border-radius: 4px;
+    background: var(--bg);
+    font-size: 0.78rem;
+    line-height: 1.5;
+  }
+  .review-label {
+    display: block;
+    margin-bottom: 3px;
+    color: var(--muted);
+    font-weight: 600;
+  }
+  .review-value {
+    color: var(--ink);
+    word-break: break-word;
+    white-space: pre-wrap;
+  }
+  .review-checks {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 8px;
+    color: var(--muted);
+    font-size: 0.78rem;
+  }
+  .review-checks label {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+  }
+
   /* Violations */
   .violation-item {
     margin-top: 8px;
@@ -400,6 +495,7 @@
       grid-template-columns: 1fr 1fr;
     }
     .msg-row { max-width: 100%; }
+    .review-grid { grid-template-columns: 1fr; }
     .scene-head-left { align-items: flex-start; flex-direction: column; gap: 6px; }
   }
 </style>
@@ -408,7 +504,7 @@
 <div class="shell">
   <div class="top">
     <h1>每日 LLM 对话回放</h1>
-    <div class="sub">用户模拟 LLM → 小信真实管线 → 质量裁判 LLM，按天回放每轮对话和状态变化。</div>
+    <div class="sub">用户模拟 LLM → 小芯真实管线 → 质量裁判 LLM，按天回放每轮对话和状态变化。</div>
     <div class="nav">
       <a href="/test">对话压测</a> ·
       <a href="/">主页</a>
@@ -420,6 +516,23 @@
       <label for="sceneSelect">场景</label>
       <select id="sceneSelect">
         <option value="all">全部场景</option>
+      </select>
+    </div>
+    <div>
+      <label for="modeSelect">模式</label>
+      <select id="modeSelect">
+        <option value="mixed" selected>混合压力</option>
+        <option value="regression">固定回归</option>
+        <option value="pressure">自由压力</option>
+      </select>
+    </div>
+    <div>
+      <label for="turnsPerDaySelect">每天轮数</label>
+      <select id="turnsPerDaySelect">
+        <option value="3">3</option>
+        <option value="8">8</option>
+        <option value="12" selected>12</option>
+        <option value="16">16</option>
       </select>
     </div>
     <div>
@@ -436,7 +549,7 @@
 
   <div class="status-line" id="statusLine">选择场景后点击开始。</div>
   <div class="results" id="results">
-    <div class="empty-hint">选择场景后开始运行，页面会按天展示用户 LLM 和小信 LLM 的完整对话。</div>
+    <div class="empty-hint">选择场景后开始运行，页面会按天展示用户 LLM 和小芯 LLM 的完整对话。</div>
   </div>
 </div>
 
@@ -452,7 +565,7 @@
       data.scenes.forEach(s => {
         const opt = document.createElement('option');
         opt.value = s.scene_id;
-        opt.textContent = `${s.name} ・ ${s.episode_count} episodes`;
+        opt.textContent = `${s.name} ・ ${s.turn_count || s.episode_count} turns`;
         sel.appendChild(opt);
       });
     } catch (e) {
@@ -522,12 +635,111 @@
       </div>`;
   }
 
+  function formatReviewValue(value) {
+    if (value == null || value === '') return '无';
+    if (Array.isArray(value)) return value.length ? value.join('\n') : '无';
+    if (typeof value === 'object') return Object.entries(value)
+      .map(([k, v]) => `${k}: ${typeof v === 'object' ? JSON.stringify(v) : v}`)
+      .join('\n') || '无';
+    return String(value);
+  }
+
+  function renderManualReviewPanel(r) {
+    const review = r.review_context || {};
+    const probes = review.probes || {};
+    const forbid = review.forbid_patterns || [];
+    const intent = review.intent || (r.action === 'greeting' ? '打开页面后触发每日问候' : '无');
+    return `
+      <div class="manual-review">
+        <div class="manual-review-title">人工审核</div>
+        <div class="review-grid">
+          <div class="review-item">
+            <span class="review-label">场景意图</span>
+            <div class="review-value">${escapeHtml(formatReviewValue(intent))}</div>
+          </div>
+          <div class="review-item">
+            <span class="review-label">状态探针</span>
+            <div class="review-value">${escapeHtml(formatReviewValue(probes))}</div>
+          </div>
+          <div class="review-item">
+            <span class="review-label">禁用模式</span>
+            <div class="review-value">${escapeHtml(formatReviewValue(forbid))}</div>
+          </div>
+          <div class="review-item">
+            <span class="review-label">本轮核对</span>
+            <div class="review-value">用户 LLM → 小芯 LLM → 状态条</div>
+          </div>
+        </div>
+        <div class="review-checks">
+          <label><input type="checkbox">用户语义保真</label>
+          <label><input type="checkbox">回应未跑偏</label>
+          <label><input type="checkbox">状态可信</label>
+        </div>
+      </div>`;
+  }
+
+  function formatTurnLabel(r) {
+    const turnIndex = r.turn_index || 1;
+    const turnCount = r.turn_count || 1;
+    return turnCount > 1 ? `Turn ${turnIndex}/${turnCount}` : `Turn ${turnIndex}`;
+  }
+
+  function renderIdleGap(r) {
+    return `
+      <div class="episode-record idle-gap">
+        <div class="idle-gap-box">
+          <span class="idle-gap-title">${escapeHtml(r.label || `Day ${r.day}`)}</span>
+          <span>无交互空窗：用户没有打开页面或发起对话，共 ${escapeHtml(String(r.gap_days || 1))} 天。</span>
+        </div>
+      </div>`;
+  }
+
+  function shouldShowManualReview(r) {
+    const turn_index = r.turn_index || 1;
+    const turn_count = r.turn_count || 1;
+    return r.action === 'chat' && turn_index === turn_count;
+  }
+
+  function formatTurnSource(source) {
+    if (source === 'scripted') return '固定意图';
+    if (source === 'pressure') return '压力续聊';
+    if (source === 'greeting') return '每日问候';
+    if (source === 'idle_gap') return '无交互';
+    return source || '未知来源';
+  }
+
+  function showDaySection(sceneId, day, summary) {
+    const body = document.getElementById(`body-${sceneId}`);
+    const safeDay = String(day).replace(/[^a-zA-Z0-9_-]/g, '_');
+    const id = `day-${sceneId}-${safeDay}`;
+    let section = document.getElementById(id);
+    if (!section) {
+      section = document.createElement('div');
+      section.className = 'day-section';
+      section.id = id;
+      section.innerHTML = `
+        <div class="day-head" onclick="this.parentElement.querySelector('.day-body').classList.toggle('hidden')">
+          <span class="day-title">Day ${escapeHtml(String(day))}</span>
+          <span>${escapeHtml(summary || '')}</span>
+        </div>
+        <div class="day-body" id="${id}-body"></div>`;
+      body.appendChild(section);
+    }
+    const summaryEl = section.querySelector('.day-head span:last-child');
+    if (summaryEl && summary) summaryEl.textContent = summary;
+    return document.getElementById(`${id}-body`);
+  }
+
   function renderRecord(r) {
+    if (r.action === 'idle_gap') return renderIdleGap(r);
+
     const isGreeting = r.action === 'greeting';
     const actionLabel = isGreeting ? '每日问候' : '对话';
+    const turnLabel = formatTurnLabel(r);
+    const sourceLabel = formatTurnSource(r.turn_source);
     let html = `
       <div class="ep-head">
-        <div class="ep-day">Day ${r.day} · ${actionLabel}</div>
+        <div class="ep-day">Day ${r.day} · ${turnLabel} · ${actionLabel} · ${escapeHtml(sourceLabel)}</div>
         <div class="ep-kind">${isGreeting ? '打开页面' : '双 LLM 对话'}</div>
       </div>`;
 
@@ -555,7 +767,7 @@
       <div class="msg-row">
         <div class="msg-avatar xiaoxin">信</div>
         <div class="msg-content">
-          <div class="msg-label">小信 LLM${r.expression ? ` · ${escapeHtml(r.expression)}` : ''}</div>
+          <div class="msg-label">小芯 LLM${r.expression ? ` · ${escapeHtml(r.expression)}` : ''}</div>
           <div class="msg-bubble">${escapeHtml(r.xiaoxin_reply)}</div>
         </div>
       </div>`;
@@ -571,9 +783,16 @@
     html += `<span class="chip">动作 ${escapeHtml(formatCompanionAction(r.companion_action))}</span>`;
     html += '</div>';
 
+    if (shouldShowManualReview(r)) {
+      html += renderManualReviewPanel(r);
+    }
+
     (r.violations || []).forEach(v => {
       html += renderViolation(v);
     });
+    if (r.day_summary) {
+      html += `<div class="day-summary">${escapeHtml(r.day_summary)}</div>`;
+    }
 
     return `<div class="episode-record">${html}</div>`;
   }
@@ -593,7 +812,7 @@
           </div>
         </div>
         <div class="scene-body" id="body-${sceneId}">
-          <div class="replay-intro">每日 LLM 对话回放：先看用户模拟 LLM 说了什么，再看小信 LLM 如何回应，最后看本轮状态是否迁移。</div>
+          <div class="replay-intro">每日 LLM 对话回放：先看用户模拟 LLM 说了什么，再看小芯 LLM 如何回应，最后看本轮状态是否迁移。</div>
         </div>`;
       document.getElementById('results').appendChild(card);
     }
@@ -622,6 +841,8 @@
 
   function startRun() {
     const scene = document.getElementById('sceneSelect').value;
+    const mode = document.getElementById('modeSelect').value;
+    const turnsPerDay = parseInt(document.getElementById('turnsPerDaySelect').value, 10);
     const seedRaw = document.getElementById('seedInput').value;
     const skipJudge = document.getElementById('skipJudge').checked;
     const statusEl = document.getElementById('statusLine');
@@ -647,6 +868,8 @@
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         scene: scene,
+        mode: mode,
+        turns_per_day: turnsPerDay,
         seed: seedRaw ? parseInt(seedRaw) : null,
         skip_judge: skipJudge
       })
@@ -654,10 +877,47 @@
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let buffer = '';
+      let pendingEvent = '';
+      let pendingData = '';
+
+      function processSseBuffer(text, flush = false) {
+        if (!text && !flush) return '';
+        const lines = text.split('\n');
+        let remaining = '';
+        if (!flush) {
+          remaining = lines.pop() || '';
+        } else if (lines[lines.length - 1] !== '') {
+          lines.push('');
+        }
+
+        for (const line of lines) {
+          if (line.startsWith('event: ')) {
+            pendingEvent = line.slice(7).trim();
+          } else if (line.startsWith('data: ')) {
+            pendingData += line.slice(6);
+          } else if (line === '' && pendingEvent && pendingData) {
+            try {
+              handleEvent(pendingEvent, JSON.parse(pendingData));
+            } catch (e) {
+              console.error('Parse error:', e, pendingData);
+            }
+            pendingEvent = '';
+            pendingData = '';
+          }
+        }
+
+        return remaining;
+      }
+
+      function flushSseBuffer(text) {
+        pendingData = pendingData.trim();
+        return processSseBuffer(text, true);
+      }
 
       function processChunk() {
         reader.read().then(({ done, value }) => {
           if (done) {
+            buffer = flushSseBuffer(buffer);
             statusEl.textContent = '测试完成。';
             statusEl.className = 'status-line done';
             runBtn.disabled = false;
@@ -665,27 +925,7 @@
           }
 
           buffer += decoder.decode(value, { stream: true });
-          const lines = buffer.split('\n');
-          buffer = lines.pop() || '';
-
-          let currentEvent = '';
-          let currentData = '';
-
-          for (const line of lines) {
-            if (line.startsWith('event: ')) {
-              currentEvent = line.slice(7).trim();
-            } else if (line.startsWith('data: ')) {
-              currentData = line.slice(6);
-            } else if (line === '' && currentEvent && currentData) {
-              try {
-                handleEvent(currentEvent, JSON.parse(currentData));
-              } catch (e) {
-                console.error('Parse error:', e, currentData);
-              }
-              currentEvent = '';
-              currentData = '';
-            }
-          }
+          buffer = processSseBuffer(buffer);
           processChunk();
         });
       }
@@ -702,9 +942,10 @@
   function handleEvent(eventType, data) {
     if (eventType === 'episode') {
       currentSceneId = data.scene_id || currentSceneId || 'unknown';
-      const body = showSceneCard(currentSceneId, data.scene_name || '进行中…');
-      body.innerHTML += renderRecord(data);
-      body.scrollIntoView({ behavior: 'smooth', block: 'end' });
+      showSceneCard(currentSceneId, data.scene_name || '进行中…');
+      const dayBody = showDaySection(currentSceneId, data.day, data.day_summary || '');
+      dayBody.innerHTML += renderRecord(data);
+      dayBody.scrollIntoView({ behavior: 'smooth', block: 'end' });
     } else if (eventType === 'quality_judge') {
       const body = showSceneCard(currentSceneId || 'unknown', '进行中…');
       body.innerHTML += renderQualityPanel(data);
@@ -719,7 +960,10 @@
       }
       // Add records if not already shown (for rendering without streaming)
       if (data.records && body.querySelectorAll('.episode-record').length === 0) {
-        data.records.forEach(r => { body.innerHTML += renderRecord(r); });
+        data.records.forEach(r => {
+          const dayBody = showDaySection(data.scene_id, r.day, r.day_summary || '');
+          dayBody.innerHTML += renderRecord(r);
+        });
       }
       updateSceneVerdict(data.scene_id, data.verdict, data.notes, data.description, data.seed);
     } else if (eventType === 'error') {
@@ -731,7 +975,7 @@
   }
 
   function clearResults() {
-    document.getElementById('results').innerHTML = '<div class="empty-hint">选择场景后开始运行，页面会按天展示用户 LLM 和小信 LLM 的完整对话。</div>';
+    document.getElementById('results').innerHTML = '<div class="empty-hint">选择场景后开始运行，页面会按天展示用户 LLM 和小芯 LLM 的完整对话。</div>';
     document.getElementById('statusLine').textContent = '选择场景后点击开始。';
     document.getElementById('statusLine').className = 'status-line';
     currentSceneId = null;

@@ -57,7 +57,7 @@ def print_report(report: dict[str, Any]) -> None:
                   f"hook={hook.get('topic')} active={hook.get('active')}")
             if r["user_message"]:
                 print(f"    用户: {r['user_message'][:80]}")
-            print(f"    小信: {r['xiaoxin_reply'][:80]}")
+            print(f"    小芯: {r['xiaoxin_reply'][:80]}")
             for v in r.get("violations", []):
                 print(f"    ! {v['type']}: {v.get('evidence', '')}")
 
@@ -78,7 +78,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     scenes = load_all_scenes()
     scene_ids = ["all"] + [s["scene_id"] for s in scenes]
 
-    parser = argparse.ArgumentParser(description="小信关系闭环自对话测试 v2")
+    parser = argparse.ArgumentParser(description="小芯关系闭环自对话测试 v2")
     parser.add_argument(
         "--scene", default="all", choices=scene_ids,
         help="要运行的场景，默认 all",

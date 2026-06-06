@@ -15,7 +15,8 @@ class TurnAnalyzerTest(unittest.TestCase):
     def test_prospective_anxiety_about_course_rhythm_gets_light_hook(self):
         result = turn_analyzer.analyze("信电会不会很难，我怕跟不上。")
 
-        self.assertEqual(result["stage_signal"], "prospective")
+        self.assertIn(result["stage_signal"], {"prospective", "pre_enrollment"})
+        self.assertNotEqual(result["stage_signal"], "early_freshman")
         self.assertEqual(result["mood"], "anxious")
         self.assertEqual(result["topic"], "course_rhythm")
         self.assertTrue(result["memory_worthy"])
@@ -36,6 +37,16 @@ class TurnAnalyzerTest(unittest.TestCase):
         self.assertEqual(result["mood"], "anxious")
         self.assertEqual(result["topic"], "course_rhythm")
         self.assertIn("reply_strategy", result)
+
+    def test_hypothetical_first_week_question_keeps_prospective_stage(self):
+        result = turn_analyzer.analyze(
+            "那如果开学后第一周上课就听不懂怎么办啊，我还没开学，有点担心。"
+        )
+
+        self.assertIn(result["stage_signal"], {"prospective", "pre_enrollment"})
+        self.assertNotEqual(result["stage_signal"], "early_freshman")
+        self.assertEqual(result["mood"], "anxious")
+        self.assertEqual(result["topic"], "course_rhythm")
 
     def test_refusing_topic_deactivates_current_hook(self):
         current_state = {

@@ -216,7 +216,7 @@ def _detect_stage_signal(text: str, current_state: dict | None = None) -> str:
         if user_stage in _STAGE_SIGNALS:
             current = user_stage
 
-    if _matches_any(text, _EARLY_FRESHMAN_PATTERNS):
+    if _matches_any(text, _EARLY_FRESHMAN_PATTERNS) and not _is_hypothetical_future_school(text, current):
         return "early_freshman"
     if _matches_any(text, _PRE_ENROLLMENT_PATTERNS):
         if current == "early_freshman":
@@ -225,6 +225,21 @@ def _detect_stage_signal(text: str, current_state: dict | None = None) -> str:
     if current:
         return current
     return "prospective"
+
+
+def _is_hypothetical_future_school(text: str, current: str | None = None) -> bool:
+    if current == "early_freshman":
+        return False
+    future_markers = (
+        "如果",
+        "假如",
+        "万一",
+        "到时候",
+        "开学后",
+        "还没开学",
+        "没开学",
+    )
+    return any(marker in text for marker in future_markers)
 
 
 def _detect_mood(text: str) -> str:

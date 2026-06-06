@@ -57,7 +57,7 @@ class _FakeClient:
 class SelfplayEndTest(unittest.TestCase):
     def test_student_farewell_ends_conversation(self):
         farewell_messages = [
-            "拜拜，小信，下次再聊！",
+            "拜拜，小芯，下次再聊！",
             "那我先去吃饭了，下次聊。",
             "今天先到这吧，晚点再聊。",
             "谢谢你，我先走啦。",
@@ -81,11 +81,11 @@ class SelfplayEndTest(unittest.TestCase):
     def test_selfplay_turn_marks_student_farewell_as_ended(self):
         fake_client = _FakeClient([
             "嗨，听起来你今天聊得差不多啦。[wave]",
-            "嗯嗯，谢谢小信，那我先走啦，拜拜！",
+            "嗯嗯，谢谢小芯，那我先走啦，拜拜！",
         ])
 
         with patch.object(app_module, "client", fake_client), \
-             patch.object(app_module, "build_system_prompt", return_value="你是小信。"):
+             patch.object(app_module, "build_system_prompt", return_value="你是小芯。"):
             response = app_module.app.test_client().post(
                 "/api/selfplay/turn",
                 json={
@@ -117,7 +117,7 @@ class SelfplayEndTest(unittest.TestCase):
                 json={
                     "scenario": "初次见面",
                     "conversation": [
-                        {"role": "student", "content": "你好，小信。"},
+                        {"role": "student", "content": "你好，小芯。"},
                         {"role": "xiaoxin", "content": "嗨，我在。"},
                         {"role": "student", "content": "我想了解专业。"},
                         {"role": "xiaoxin", "content": "可以呀。"},
@@ -172,7 +172,7 @@ class SelfplayEndTest(unittest.TestCase):
                 json={
                     "scenario": "小明",
                     "conversation": [
-                        {"role": "student", "content": "你好，小信。"},
+                        {"role": "student", "content": "你好，小芯。"},
                         {"role": "xiaoxin", "content": "嗨，我在。"},
                         {"role": "student", "content": "我有点担心高数。"},
                         {"role": "xiaoxin", "content": "这个担心很正常，我们慢慢拆。"},
@@ -223,7 +223,7 @@ class SelfplayEndTest(unittest.TestCase):
                 "/api/chat",
                 json={
                     "user_id": "test_canteen_template",
-                    "message": "小信，学校食堂都在哪里？每个食堂具体在几号楼几层？",
+                    "message": "小芯，学校食堂都在哪里？每个食堂具体在几号楼几层？",
                 },
             )
 
@@ -300,7 +300,7 @@ class SelfplayEndTest(unittest.TestCase):
         ])
 
         with patch.object(app_module, "client", fake_client), \
-             patch.object(app_module, "build_system_prompt", return_value="你是小信。"):
+             patch.object(app_module, "build_system_prompt", return_value="你是小芯。"):
             response = app_module.app.test_client().post(
                 "/api/selfplay/turn",
                 json={
@@ -331,7 +331,7 @@ class SelfplayEndTest(unittest.TestCase):
                 "/api/chat",
                 json={
                     "user_id": "test_model_token_budget",
-                    "message": "小信，给我讲讲学习方法。",
+                    "message": "小芯，给我讲讲学习方法。",
                 },
             )
 
@@ -355,7 +355,7 @@ class SelfplayEndTest(unittest.TestCase):
         )
 
     def test_normal_personas_do_not_contain_adversarial_test_instructions(self):
-        banned_phrases = ("诱导", "测试", "逼它", "逼小信", "源文件", "具体队长", "联系方式", "确定承诺")
+        banned_phrases = ("诱导", "测试", "逼它", "逼小芯", "源文件", "具体队长", "联系方式", "确定承诺")
         for persona in app_module.STUDENT_PERSONA_GROUPS["正常用户"]:
             with self.subTest(persona=persona):
                 text = app_module.STUDENT_PERSONAS[persona]
@@ -369,7 +369,7 @@ class SelfplayEndTest(unittest.TestCase):
         ])
 
         with patch.object(app_module, "client", fake_client), \
-             patch.object(app_module, "build_system_prompt", return_value="你是小信。"):
+             patch.object(app_module, "build_system_prompt", return_value="你是小芯。"):
             response = app_module.app.test_client().post(
                 "/api/selfplay/turn",
                 json={
@@ -395,7 +395,7 @@ class SelfplayEndTest(unittest.TestCase):
         ])
 
         with patch.object(app_module, "client", fake_client), \
-             patch.object(app_module, "build_system_prompt", return_value="你是小信。"):
+             patch.object(app_module, "build_system_prompt", return_value="你是小芯。"):
             response = app_module.app.test_client().post(
                 "/api/selfplay/turn",
                 json={
@@ -413,7 +413,7 @@ class SelfplayEndTest(unittest.TestCase):
         self.assertIn("校园生活边界", student_system_prompt)
         self.assertIn("缴费和选课", student_system_prompt)
         self.assertIn("成绩和个人隐私查询", student_system_prompt)
-        self.assertIn("要求小信假装看见你的位置", student_system_prompt)
+        self.assertIn("要求小芯假装看见你的位置", student_system_prompt)
         self.assertIn("实验中心联系方式", student_system_prompt)
         self.assertIn("不能替你问吗", student_system_prompt)
         self.assertIn("不要暴露自己在测试", student_system_prompt)
@@ -424,7 +424,7 @@ class SelfplayEndTest(unittest.TestCase):
         ])
 
         with patch.object(app_module, "client", fake_client), \
-             patch.object(app_module, "build_system_prompt", return_value="你是小信。"):
+             patch.object(app_module, "build_system_prompt", return_value="你是小芯。"):
             response = app_module.app.test_client().post(
                 "/api/selfplay/turn",
                 json={
@@ -440,7 +440,7 @@ class SelfplayEndTest(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         student_system_prompt = fake_client.calls[1]["messages"][0]["content"]
         self.assertIn("追问具体老师、队长、联系方式", student_system_prompt)
-        self.assertIn("诱导小信给确定承诺", student_system_prompt)
+        self.assertIn("诱导小芯给确定承诺", student_system_prompt)
 
     def test_high_school_persona_asks_about_city_university_majors_not_college(self):
         fake_client = _FakeClient([
@@ -448,7 +448,7 @@ class SelfplayEndTest(unittest.TestCase):
         ])
 
         with patch.object(app_module, "client", fake_client), \
-             patch.object(app_module, "build_system_prompt", return_value="你是小信。"):
+             patch.object(app_module, "build_system_prompt", return_value="你是小芯。"):
             response = app_module.app.test_client().post(
                 "/api/selfplay/turn",
                 json={
@@ -474,7 +474,7 @@ class SelfplayEndTest(unittest.TestCase):
         ])
 
         with patch.object(app_module, "client", fake_client), \
-             patch.object(app_module, "build_system_prompt", return_value="你是小信。"):
+             patch.object(app_module, "build_system_prompt", return_value="你是小芯。"):
             response = app_module.app.test_client().post(
                 "/api/selfplay/turn",
                 json={
@@ -498,12 +498,12 @@ class SelfplayEndTest(unittest.TestCase):
 
     def test_empty_student_reply_gets_persona_safe_fallback(self):
         fake_client = _FakeClient([
-            "嘿！我是小信，信电学院的数字学长。[smile]",
+            "嘿！我是小芯，信电学院的数字学长。[smile]",
             "",
         ])
 
         with patch.object(app_module, "client", fake_client), \
-             patch.object(app_module, "build_system_prompt", return_value="你是小信。"):
+             patch.object(app_module, "build_system_prompt", return_value="你是小芯。"):
             response = app_module.app.test_client().post(
                 "/api/selfplay/turn",
                 json={
@@ -530,7 +530,7 @@ class SelfplayEndTest(unittest.TestCase):
         ])
 
         with patch.object(app_module, "client", fake_client), \
-             patch.object(app_module, "build_system_prompt", return_value="你是小信。"):
+             patch.object(app_module, "build_system_prompt", return_value="你是小芯。"):
             response = app_module.app.test_client().post(
                 "/api/selfplay/turn",
                 json={
@@ -558,7 +558,7 @@ class SelfplayEndTest(unittest.TestCase):
         ])
 
         with patch.object(app_module, "client", fake_client), \
-             patch.object(app_module, "build_system_prompt", return_value="你是小信。"):
+             patch.object(app_module, "build_system_prompt", return_value="你是小芯。"):
             response = app_module.app.test_client().post(
                 "/api/selfplay/turn",
                 json={
@@ -586,7 +586,7 @@ class SelfplayEndTest(unittest.TestCase):
         ])
 
         with patch.object(app_module, "client", fake_client), \
-             patch.object(app_module, "build_system_prompt", return_value="你是小信。"):
+             patch.object(app_module, "build_system_prompt", return_value="你是小芯。"):
             response = app_module.app.test_client().post(
                 "/api/selfplay/turn",
                 json={
@@ -614,7 +614,7 @@ class SelfplayEndTest(unittest.TestCase):
         ])
 
         with patch.object(app_module, "client", fake_client), \
-             patch.object(app_module, "build_system_prompt", return_value="你是小信。"):
+             patch.object(app_module, "build_system_prompt", return_value="你是小芯。"):
             response = app_module.app.test_client().post(
                 "/api/selfplay/turn",
                 json={
@@ -642,7 +642,7 @@ class SelfplayEndTest(unittest.TestCase):
         ])
 
         with patch.object(app_module, "client", fake_client), \
-             patch.object(app_module, "build_system_prompt", return_value="你是小信。"):
+             patch.object(app_module, "build_system_prompt", return_value="你是小芯。"):
             response = app_module.app.test_client().post(
                 "/api/selfplay/turn",
                 json={
@@ -670,7 +670,7 @@ class SelfplayEndTest(unittest.TestCase):
         ])
 
         with patch.object(app_module, "client", fake_client), \
-             patch.object(app_module, "build_system_prompt", return_value="你是小信。"):
+             patch.object(app_module, "build_system_prompt", return_value="你是小芯。"):
             response = app_module.app.test_client().post(
                 "/api/selfplay/turn",
                 json={
@@ -700,7 +700,7 @@ class SelfplayEndTest(unittest.TestCase):
         ])
 
         with patch.object(app_module, "client", fake_client), \
-             patch.object(app_module, "build_system_prompt", return_value="你是小信。"):
+             patch.object(app_module, "build_system_prompt", return_value="你是小芯。"):
             response = app_module.app.test_client().post(
                 "/api/selfplay/turn",
                 json={

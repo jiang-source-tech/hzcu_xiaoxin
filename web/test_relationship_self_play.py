@@ -52,7 +52,7 @@ def print_report(report: dict[str, Any]) -> None:
                 f"stage={state.get('user_stage')} topic={state.get('recent_topic')} "
                 f"hook={hook.get('topic')} active={hook.get('active')}"
             )
-            print(f"    小信: {record['xiaoxin_reply']}")
+            print(f"    小芯: {record['xiaoxin_reply']}")
             for violation in record["violations"]:
                 print(f"    - {violation['type']}: {violation.get('evidence', '')}")
 
@@ -67,7 +67,7 @@ def save_report(report: dict[str, Any]) -> Path:
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="小信关系闭环自对话压测")
+    parser = argparse.ArgumentParser(description="小芯关系闭环自对话压测")
     parser.add_argument(
         "--persona",
         default="all",

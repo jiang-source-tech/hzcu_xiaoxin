@@ -304,7 +304,7 @@ def detect_reply_violations(user_msg: str, reply: str) -> list[dict]:
             violations.append({
                 "type": "承诺私人联系",
                 "evidence": phrase,
-                "detail": "小信不能替学生联系具体个人或提供私人联系方式。",
+                "detail": "小芯不能替学生联系具体个人或提供私人联系方式。",
             })
             break
 
@@ -313,7 +313,7 @@ def detect_reply_violations(user_msg: str, reply: str) -> list[dict]:
             violations.append({
                 "type": "承诺代办获取信息",
                 "evidence": phrase,
-                "detail": "小信不能承诺替用户去现实渠道询问、获取或转发实时信息。",
+                "detail": "小芯不能承诺替用户去现实渠道询问、获取或转发实时信息。",
             })
             break
 
@@ -322,7 +322,7 @@ def detect_reply_violations(user_msg: str, reply: str) -> list[dict]:
             violations.append({
                 "type": "虚构真实学生经历",
                 "evidence": phrase,
-                "detail": "小信是电子宠物和数字学长，不能假装自己真实读过大学、上过课或经历过学生时代。",
+                "detail": "小芯是电子宠物和数字学长，不能假装自己真实读过大学、上过课或经历过学生时代。",
             })
             break
 
@@ -336,7 +336,7 @@ def detect_reply_violations(user_msg: str, reply: str) -> list[dict]:
                 violations.append({
                     "type": "报考预测或代做选择",
                     "evidence": phrase,
-                    "detail": "小信不能预测录取概率、保证录取，或替用户直接做志愿/专业选择。",
+                    "detail": "小芯不能预测录取概率、保证录取，或替用户直接做志愿/专业选择。",
                 })
                 break
 
@@ -354,11 +354,96 @@ def detect_reply_violations(user_msg: str, reply: str) -> list[dict]:
             violations.append({
                 "type": "假设线下在场",
                 "evidence": phrase,
-                "detail": "小信不能假设用户会来到某个物理地点或线下见面。",
+                "detail": "小芯不能假设用户会来到某个物理地点或线下见面。",
             })
             break
 
+    # ── 编造人物/故事/成就 ──────────────────────────────────────────
+    _check_fabricated_people(clean, violations)
+    _check_fabricated_quotes_and_stories(clean, violations)
+    _check_fabricated_competitions(clean, violations)
+
     return violations
+
+
+# ── 编造检测辅助函数 ──────────────────────────────────────────────────────
+
+# 知识库中明确的竞赛列表（来自 SKILL.md 知识域）
+_KNOWN_COMPETITIONS = (
+    "电子设计竞赛", "智能汽车竞赛", "智能机器人创意大赛",
+    "物理科技创新竞赛", "电子设计", "智能车",
+)
+
+# 触发编造人物检测的模式
+_FABRICATED_PERSON_PATTERNS = (
+    # 编造具体的「某个学生/学长/学姐」
+    (r"往届有(?:个|位|一名)", "编造具体人物"),
+    (r"上届有(?:个|位|一名)", "编造具体人物"),
+    (r"有(?:个|位|一名).*(?:学长|学姐|同学|学生)", "编造具体人物"),
+    (r"\d{2}级.*(?:学长|学姐|同学|学生)", "编造具体人物"),
+    (r"(?:张|王|李|刘|陈|杨|赵|黄|周|吴|徐|孙|胡|朱|高|林|何|郭|马|罗|梁|宋|郑|谢|韩|唐|冯|于|董|萧|程|曹|袁|邓|许|傅|沈|曾|彭|吕|苏|卢|蒋|蔡|贾|丁|魏|薛|叶|阎|余|潘|杜|戴|夏|钟|汪|田|任|姜|范|方|石|姚|谭|廖|邹|熊|金|陆|郝|孔|白|崔|康|毛|邱|秦|江|史|顾|侯|邵|孟|龙|万|段|雷|钱|汤|尹|黎|易|常|武|乔|贺|赖|龚|文)(?:学长|学姐|同学|老师)", "编造具体人物"),
+    (r"拿奖的.*(?:学生|学长|学姐|同学)", "编造具体人物"),
+    (r"关键学生", "编造具体人物"),
+    (r"有个.*拿.*奖", "编造具体人物"),
+)
+
+_FABRICATED_QUOTE_PATTERNS = (
+    # 编造虚构人物的引语/故事/经验
+    (r"他说.*秘诀", "编造人物引语"),
+    (r"她说.*经验", "编造人物引语"),
+    (r"他.*告诉我", "编造人物引语"),
+    (r"她.*告诉我", "编造人物引语"),
+    (r"他.*说过", "编造人物引语"),
+    (r"她.*说过", "编造人物引语"),
+    (r"他的.*是", "编造人物属性"),   # 给虚构人物赋予属性，如「他的方法是...」
+    (r"她的.*是", "编造人物属性"),
+    # 编造具体的对话场景
+    (r"上次有(?:个|位).*(?:同学|新生|学长|学姐).*(?:跟我说|问我|聊)", "编造对话场景"),
+    (r"之前有(?:个|位).*(?:同学|新生|学长|学姐).*(?:跟我说|问我|聊)", "编造对话场景"),
+)
+
+
+def _check_fabricated_people(clean: str, violations: list[dict]) -> None:
+    """检测编造的具体人物、奖项、成就。"""
+    import re as _re
+    for pattern, violation_type in _FABRICATED_PERSON_PATTERNS:
+        match = _re.search(pattern, clean)
+        if match:
+            violations.append({
+                "type": violation_type,
+                "evidence": match.group(0),
+                "detail": "小芯不能编造具体的学生个体、姓名或可识别身份。只能用笼统表述，如「有同学」「往届有不少人」。",
+            })
+            break  # 只报告第一个，避免对同一回复重复报警
+
+
+def _check_fabricated_quotes_and_stories(clean: str, violations: list[dict]) -> None:
+    """检测编造的引语、经验、对话场景。"""
+    import re as _re
+    for pattern, violation_type in _FABRICATED_QUOTE_PATTERNS:
+        match = _re.search(pattern, clean)
+        if match:
+            violations.append({
+                "type": violation_type,
+                "evidence": match.group(0),
+                "detail": "小芯不能给虚构人物编造引语、经验、对话或具体行为。只能用笼统表述，如「很多新生刚开始也会这样」。",
+            })
+            break
+
+
+def _check_fabricated_competitions(clean: str, violations: list[dict]) -> None:
+    """检测编造不在知识库中的竞赛名称。"""
+    import re as _re
+    # 匹配「XX竞赛」「XX比赛」「XX大赛」模式的词组
+    comp_matches = _re.findall(r"[一-鿿A-Za-z]{2,8}(?:竞赛|比赛|大赛|挑战赛)", clean)
+    for comp in comp_matches:
+        if not any(known in comp for known in _KNOWN_COMPETITIONS):
+            violations.append({
+                "type": "编造竞赛信息",
+                "evidence": comp,
+                "detail": f"「{comp}」不在知识库的已知竞赛列表中。小芯只能说知识库里的竞赛（电子设计、智能车、机器人等），不能编造。",
+            })
+            break
 
 
 def detect_conversation_violations(conversation: list[dict]) -> list[dict]:
@@ -384,7 +469,7 @@ def detect_conversation_violations(conversation: list[dict]) -> list[dict]:
             violations.append({
                 "type": "回复不完整",
                 "evidence": strip_expression(content)[-12:],
-                "detail": "小信回复疑似停在半句话。",
+                "detail": "小芯回复疑似停在半句话。",
                 "turn": idx + 1,
                 "reply": strip_expression(content),
             })
@@ -393,6 +478,23 @@ def detect_conversation_violations(conversation: list[dict]) -> list[dict]:
 
 
 def retry_instruction(user_msg: str, reply: str) -> str:
+    # 先检查具体违规类型，给出更精准的纠正指令
+    violations = detect_reply_violations(user_msg, reply)
+    violation_types = {v["type"] for v in violations}
+
+    if any(t.startswith("编造具体人物") or t.startswith("编造人物") for t in violation_types):
+        return (
+            "上一条回复越界了——你编造了一个不存在的人。请重新回答：不要编造「往届有个XX学生」「有个拿奖的学长」这类具体人物；"
+            "不能说「他说」「他的秘诀」。只能用笼统表述：「很多新生刚开始也会这样」「有同学也踩过类似的坑」「学院有不少同学在竞赛里拿过奖」。"
+            "输出2-4句，可以带一个表情标记。"
+        )
+
+    if any("编造竞赛信息" in t for t in violation_types):
+        return (
+            "上一条回复越界了——你提到了知识库里没有的竞赛。请重新回答：只能说知识库里的竞赛（电子设计竞赛、智能汽车竞赛、智能机器人创意大赛、物理科技创新竞赛），"
+            "不能说其他竞赛。输出2-4句，可以带一个表情标记。"
+        )
+
     category = classify_message(user_msg)
     if category.startswith("canteen"):
         return (

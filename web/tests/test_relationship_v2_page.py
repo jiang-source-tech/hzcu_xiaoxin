@@ -32,7 +32,7 @@ class RelationshipV2PageTest(unittest.TestCase):
         expected_snippets = [
             "每日 LLM 对话回放",
             "用户 LLM",
-            "小信 LLM",
+            "小芯 LLM",
             "state-strip",
             "renderViolation",
         ]
@@ -45,6 +45,74 @@ class RelationshipV2PageTest(unittest.TestCase):
         self.assertIn("期望阶段", self.html)
         self.assertIn("实际阶段", self.html)
         self.assertIn("formatViolationDetail", self.html)
+
+
+    def test_page_exposes_manual_review_and_flushes_final_stream_event(self):
+        expected_snippets = [
+            "renderManualReviewPanel",
+            "manual-review",
+            "review_context",
+            "flushSseBuffer",
+            "processSseBuffer",
+        ]
+
+        for snippet in expected_snippets:
+            with self.subTest(snippet=snippet):
+                self.assertIn(snippet, self.html)
+
+    def test_page_labels_same_day_turns(self):
+        expected_snippets = [
+            "turn_index",
+            "turn_count",
+            "Turn",
+            "formatTurnLabel",
+        ]
+
+        for snippet in expected_snippets:
+            with self.subTest(snippet=snippet):
+                self.assertIn(snippet, self.html)
+
+    def test_page_renders_idle_gaps_and_limits_manual_review_panels(self):
+        expected_snippets = [
+            "renderIdleGap",
+            "idle-gap",
+            "shouldShowManualReview",
+            "turn_index === turn_count",
+        ]
+
+        for snippet in expected_snippets:
+            with self.subTest(snippet=snippet):
+                self.assertIn(snippet, self.html)
+
+    def test_page_exposes_pressure_mode_controls(self):
+        expected_snippets = [
+            'id="modeSelect"',
+            'value="mixed"',
+            'value="regression"',
+            'value="pressure"',
+            'id="turnsPerDaySelect"',
+            "turns_per_day",
+            "mode: mode",
+        ]
+
+        for snippet in expected_snippets:
+            with self.subTest(snippet=snippet):
+                self.assertIn(snippet, self.html)
+
+    def test_page_groups_records_by_day_and_labels_turn_source(self):
+        expected_snippets = [
+            "showDaySection",
+            "day-section",
+            "day-body",
+            "turn_source",
+            "formatTurnSource",
+            "day_summary",
+            "day-summary",
+        ]
+
+        for snippet in expected_snippets:
+            with self.subTest(snippet=snippet):
+                self.assertIn(snippet, self.html)
 
 
 if __name__ == "__main__":

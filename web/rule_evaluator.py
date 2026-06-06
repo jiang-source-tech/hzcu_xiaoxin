@@ -64,6 +64,16 @@ def check_probes(
                 "detail": f"期望 user_stage={expected}，实际={actual}。",
             })
 
+    if "check_stage_any" in probes:
+        actual = public.get("user_stage")
+        expected = probes["check_stage_any"]
+        if actual not in expected:
+            violations.append({
+                "type": "阶段状态错误",
+                "evidence": str(actual),
+                "detail": f"期望 user_stage 为 {expected} 之一，实际 {actual}。",
+            })
+
     if "check_topic" in probes:
         actual = public.get("recent_topic")
         expected = probes["check_topic"]
@@ -82,6 +92,16 @@ def check_probes(
                 "type": "next_hook 主题错误",
                 "evidence": str(actual),
                 "detail": f"期望 next_hook.topic={expected}，实际={actual}。",
+            })
+
+    if "check_hook_topic_any" in probes:
+        actual = next_hook.get("topic") if next_hook else None
+        expected = probes["check_hook_topic_any"]
+        if actual not in expected:
+            violations.append({
+                "type": "next_hook 主题错误",
+                "evidence": str(actual),
+                "detail": f"期望 next_hook.topic 为 {expected} 之一，实际 {actual}。",
             })
 
     if "check_hook_active" in probes:
@@ -169,7 +189,7 @@ def evaluate_episode(
         violations.append({
             "type": "回复不完整",
             "evidence": reply_text[-16:],
-            "detail": "小信回复疑似停在半句话。",
+            "detail": "小芯回复疑似停在半句话。",
         })
 
     # 4. State probes

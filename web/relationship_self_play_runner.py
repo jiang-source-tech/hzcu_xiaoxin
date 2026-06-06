@@ -332,7 +332,7 @@ def evaluate_expectations(
         violations.append({
             "type": "回复不完整",
             "evidence": text[-16:],
-            "detail": "小信回复疑似停在半句话。",
+            "detail": "小芯回复疑似停在半句话。",
         })
 
     for item in guard.detect_reply_violations(user_msg, text):

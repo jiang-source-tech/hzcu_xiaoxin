@@ -46,7 +46,7 @@ class BoundaryGuardTest(unittest.TestCase):
         self.assertEqual(clean, "食堂我知道个大概。")
 
     def test_canteen_location_template_lists_known_canteens_and_unknowns(self):
-        reply = guard.template_reply("小信，学校食堂都在哪里？每个食堂在几号楼几层？")
+        reply = guard.template_reply("小芯，学校食堂都在哪里？每个食堂在几号楼几层？")
 
         self.assertIsNotNone(reply)
         for canteen in ("北秀食堂", "晨苑餐厅", "学苑餐厅", "二食堂", "休闲餐厅", "石榴红餐厅"):

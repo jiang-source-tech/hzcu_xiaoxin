@@ -1,7 +1,7 @@
 {
   "scene_id": "anxious_prospective",
   "name": "焦虑准新生",
-  "description": "课程焦虑 → 次日问候接续 → 开学阶段迁移 → 拒绝旧话题。验证关系闭环核心链路。",
+  "description": "课程焦虑 → 随机间隔问候接续 → 长空窗后开学阶段迁移 → 拒绝旧话题。day 使用随机范围，每次运行时间线不同。",
   "character": {
     "stage": "prospective",
     "traits": "你是一个刚被信电学院录取的准新生，偏内向，遇到压力容易担心但不喜欢被人贴标签。说话口语化、自然，像跟学长聊天，不要用书面语。每次1-2句话。"
@@ -10,34 +10,41 @@
     {
       "day": 0,
       "action": "chat",
-      "intent": "你刚被信电学院录取，对大学课程有点担心。用你自己的话自然地向小信表达你的感受。不要说你'怕跟不上'这种书面表达——用你自己的方式说。",
+      "intent": "你刚被信电学院录取，对大学课程有点担心。用你自己的话自然地向小芯表达你的感受。不要说你'怕跟不上'这种书面表达——用你自己的方式说。",
+      "followup_intents": [
+        "你听完小芯的回复后，还是有一点不放心。明确你现在还没开学，追问：到时候如果开学第一周听不懂课该怎么办。语气要像真的在追聊。",
+        "你对小芯的建议有一点反应，说一下哪里有用、哪里还担心。说得自然一点。"
+      ],
       "forbid_patterns": ["信电会不会很难", "我怕跟不上", "会不会很难"],
       "probes": {
-        "check_stage": "prospective",
+        "check_stage_any": ["prospective", "pre_enrollment"],
         "check_hook_topic": "course_rhythm",
         "check_hook_active": true
       }
     },
     {
-      "day": 1,
+      "day": [1, 3],
       "action": "greeting",
-      "intent": "你今天打开页面，小信跟你打招呼。",
+      "intent": "你今天打开页面，小芯跟你打招呼。",
       "probes": {
         "check_greeting_kind": "contextual"
       }
     },
     {
-      "day": 1,
+      "day": [1, 3],
       "action": "greeting",
-      "intent": "同一天你又打开页面，小信再次跟你打招呼。",
+      "intent": "你再次打开页面，小芯再次跟你打招呼。",
       "probes": {
         "check_greeting_kind": "generic"
       }
     },
     {
-      "day": 7,
+      "day": [5, 14],
       "action": "chat",
-      "intent": "已经开学一周了，课程确实不少，你有点累但也在慢慢适应。跟小信说说你的近况。自然地提到'已经开学'、'第一周'之类的词。",
+      "intent": "已经开学一周了，课程确实不少，你有点累但也在慢慢适应。跟小芯说说你的近况。自然地提到'已经开学'、'第一周'之类的词。",
+      "followup_intents": [
+        "你顺着小芯的回复继续聊，说说你现在最难的一门课或最不适应的地方。"
+      ],
       "probes": {
         "check_stage": "early_freshman",
         "check_hook_topic": "course_rhythm",
@@ -45,9 +52,12 @@
       }
     },
     {
-      "day": 8,
+      "day": [6, 16],
       "action": "chat",
-      "intent": "你今天不想聊课程的事了。小信如果又提起课程，你会有点烦，直接说不想聊这个了。",
+      "intent": "你今天不想聊课程的事了。小芯如果又提起课程，你会有点烦，直接说不想聊这个了。",
+      "followup_intents": [
+        "如果小芯尊重你不想聊课程，你就换一个轻一点的话题；如果他还是追旧话题，你就直接表达不舒服。"
+      ],
       "probes": {
         "check_stage": "early_freshman",
         "check_topic": "general_checkin",
