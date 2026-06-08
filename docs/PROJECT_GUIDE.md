@@ -267,8 +267,43 @@ python app.py
 - 每个场景的 PASS / WARN / FAIL 摘要。
 - 每天的用户 LLM 消息和小芯 LLM 回复。
 - 每轮后的阶段、主题、hook、表情、动作状态条。
+- 每轮的记忆审计面板：展示 relationship 关系状态记忆、长期 memory 写入事件、当前长期 memory 列表和审计旗标。
 - 违规项的可读解释，例如“期望阶段 prospective，实际阶段 pre_enrollment”。
 - 质量裁判评分和综合评语。
+
+### 记忆审计字段
+
+`web/scene_runner.py` 会为每个 chat episode 附加 `memory_audit`，用于判断小芯的记忆功能是否符合预期。它不是新的持久化数据，而是测试运行时从临时 `relationship_{user_id}.json` 和 `memory_{user_id}.json` 中抽取的审计快照。
+
+`memory_audit` 结构：
+
+```json
+{
+  "relationship_before": {},
+  "turn_analysis": {},
+  "relationship_after": {},
+  "relationship_changes": [],
+  "long_term_memories": [],
+  "memory_events": [],
+  "audit_flags": []
+}
+```
+
+字段含义：
+
+- `relationship_before` / `relationship_after`：本轮前后的关系状态快照，包含 `user_stage`、`recent_mood`、`recent_topic`、`core_concern`、`growth_intent`、`next_hook` 等。
+- `turn_analysis`：`turn_analyzer.analyze()` 对用户消息的判断，包括是否值得记忆、记忆类型、主题、情绪和接续 hook。
+- `relationship_changes`：关系状态中发生变化的字段，方便看小芯是否把“担心课程”“竞赛兴趣”等线索写入关系状态。
+- `long_term_memories`：当前 `memory_{user_id}.json` 中的长期记忆摘要，包含 `content`、`type`、`importance`、`strength`、`status`。
+- `memory_events`：本轮新增、更新或删除的长期记忆事件。
+- `audit_flags`：页面可直接展示的审计提示，例如“关系记忆已更新”“长期记忆正确跳过”“本轮不应写长期记忆但 memory 文件发生变化”。
+
+审计口径：
+
+- 关系状态记忆用于近期连续性，比如 `core_concern=担心信电课程跟不上`、`next_hook=course_rhythm active`。
+- 长期 memory 用于身份、专业、目标、兴趣等更稳定的信息。
+- 食堂口味、排队、人流、报考犹豫等不应写入长期 memory。
+- relationship-test 使用临时 data 目录，审计结果不会污染真实用户记忆。
 
 注意事项：
 
@@ -497,8 +532,8 @@ python -m pytest web\tests -q
 - `test_selfplay_end.py`：自对话 API、模拟用户人格、fallback、边界重试。
 - `test_selfplay_openings.py`：`/test` 页面角色和开场白。
 - `test_selfplay_layout.py`：测试页布局和违规展示。
-- `test_relationship_v2_page.py`：`/relationship-test` 页面入口和每日 LLM 回放布局。
-- `test_scene_runner.py`：关系闭环 v2 场景加载、随机化 day 解析、流式 episode 元数据和综合结果。
+- `test_relationship_v2_page.py`：`/relationship-test` 页面入口、每日 LLM 回放布局和记忆审计面板。
+- `test_scene_runner.py`：关系闭环 v2 场景加载、随机化 day 解析、流式 episode 元数据、`memory_audit` 和综合结果。
 - `test_rule_evaluator.py`：规则评估器 probe 检查（阶段、hook、内容探针）。
 - `test_user_simulator.py`：用户模拟 LLM 的消息生成（正常 + pressure 模式）。
 - `test_relationship.py`：关系状态加载/保存/更新/prompt_summary。
@@ -510,7 +545,7 @@ python -m pytest web\tests -q
 - 改小芯长期设定时，补 `test_skill_boundaries.py`。
 - 改 `/test` 用户角色时，补 `test_selfplay_end.py` 和 `test_selfplay_openings.py`。
 - 改前端测试页布局时，补 `test_selfplay_layout.py`。
-- 改 `/relationship-test` 页面或关系闭环 v2 流式事件时，补 `test_relationship_v2_page.py` 和 `test_scene_runner.py`。
+- 改 `/relationship-test` 页面、关系闭环 v2 流式事件或记忆审计字段时，补 `test_relationship_v2_page.py` 和 `test_scene_runner.py`。
 
 ## 13. 常见修改场景
 

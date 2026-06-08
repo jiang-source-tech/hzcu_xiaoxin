@@ -11,6 +11,7 @@ os.environ.setdefault("DEEPSEEK_API_KEY", "test-key")
 
 import relationship_state
 import scene_runner
+import turn_analyzer
 
 
 SCENE_DIR = Path(__file__).resolve().parents[1] / "scenes"
@@ -124,6 +125,58 @@ class SceneRunnerTest(unittest.TestCase):
         self.assertIn("forbid_patterns", review)
         self.assertEqual(review["audit_targets"]["user_message"], "student message")
         self.assertEqual(review["audit_targets"]["xiaoxin_reply"], "ok")
+
+    def test_streaming_episode_includes_memory_audit(self):
+        def chat_fn(user_id, user_msg, raw_data_dir):
+            data_dir = Path(raw_data_dir)
+            state = relationship_state.load_state(data_dir, user_id)
+            analysis = turn_analyzer.analyze(user_msg, state)
+            updated = relationship_state.update_after_turn(state, analysis)
+            relationship_state.save_state(data_dir, user_id, updated)
+            return {"reply": "课程节奏可以慢慢拆。"}
+
+        def memory_fn(user_id, user_msg, reply_text, raw_data_dir):
+            memory_path = Path(raw_data_dir) / f"memory_{user_id}.json"
+            memory_path.write_text(json.dumps({
+                "user_id": user_id,
+                "memories": [{
+                    "id": "m1",
+                    "content": "我是人工智能专业，对课程有点担心。",
+                    "type": "major",
+                    "importance": 0.45,
+                    "strength": 0.45,
+                    "status": "可回忆",
+                }],
+                "stats": {"total_memories": 1},
+            }, ensure_ascii=False), encoding="utf-8")
+
+        with patch.object(
+            scene_runner.user_simulator,
+            "generate_user_message",
+            return_value="我是人工智能专业，对课程有点担心。",
+        ):
+            events = scene_runner.run_scene_streaming(
+                scene_id="anxious_prospective",
+                seed=1,
+                skip_quality_judge=True,
+                max_days=0,
+                chat_fn=chat_fn,
+                memory_fn=memory_fn,
+                greeting_fn=lambda *_args: {"greeting": "hello"},
+            )
+            episode = next(event for event in events if event["event"] == "episode")
+
+        audit = episode["data"]["memory_audit"]
+        self.assertIn("relationship_before", audit)
+        self.assertIn("relationship_after", audit)
+        self.assertIn("turn_analysis", audit)
+        self.assertIn("relationship_changes", audit)
+        self.assertIn("long_term_memories", audit)
+        self.assertIn("memory_events", audit)
+        self.assertIn("audit_flags", audit)
+        self.assertEqual(audit["relationship_after"]["core_concern"], "担心信电课程跟不上")
+        self.assertEqual(audit["memory_events"][0]["action"], "created")
+        self.assertEqual(audit["long_term_memories"][0]["type"], "major")
 
     def test_streaming_chat_episode_can_expand_into_same_day_turns(self):
         def chat_fn(user_id, user_msg, raw_data_dir):
@@ -285,6 +338,80 @@ class SceneRunnerTest(unittest.TestCase):
         self.assertEqual([ep["turn_index"] for ep in episodes], [1, 2, 3, 4])
         self.assertTrue(all(ep["turn_count"] == 4 for ep in episodes))
         self.assertTrue(all("day_summary" in ep for ep in episodes))
+
+    def test_streaming_mixed_mode_uses_random_user_initiated_days_to_max_days(self):
+        def chat_fn(user_id, user_msg, raw_data_dir):
+            state = relationship_state.default_state()
+            relationship_state.save_state(Path(raw_data_dir), user_id, state)
+            return {"reply": f"reply to {user_msg}"}
+
+        with patch.object(
+            scene_runner.user_simulator,
+            "generate_user_message",
+            side_effect=lambda **kwargs: f"scripted:{kwargs['intent']}",
+        ), patch.object(
+            scene_runner.user_simulator,
+            "generate_pressure_user_message",
+            side_effect=lambda **kwargs: f"pressure:{kwargs['turn_index']}",
+        ):
+            events = list(scene_runner.run_scene_streaming(
+                scene_id="anxious_prospective",
+                seed=7,
+                skip_quality_judge=True,
+                max_days=7,
+                mode="mixed",
+                turns_per_day=2,
+                chat_fn=chat_fn,
+                greeting_fn=lambda *_args: {"greeting": "hello"},
+            ))
+
+        records = [
+            e["data"] for e in events
+            if e["event"] == "episode"
+        ]
+        active_records = [r for r in records if r["action"] != "idle_gap"]
+        covered_until = max(
+            r.get("to_day", r["day"]) if r["action"] == "idle_gap" else r["day"]
+            for r in records
+        )
+
+        self.assertGreater(len(active_records), 0)
+        self.assertTrue(all(r["action"] == "chat" for r in active_records))
+        self.assertNotIn("greeting", {r["action"] for r in records})
+        self.assertEqual(covered_until, 7)
+
+    def test_streaming_random_timeline_shows_initial_idle_gap(self):
+        def chat_fn(user_id, user_msg, raw_data_dir):
+            state = relationship_state.default_state()
+            relationship_state.save_state(Path(raw_data_dir), user_id, state)
+            return {"reply": "ok"}
+
+        with patch.object(
+            scene_runner.user_simulator,
+            "generate_pressure_user_message",
+            side_effect=lambda **kwargs: f"pressure:{kwargs['turn_index']}",
+        ):
+            events = list(scene_runner.run_scene_streaming(
+                scene_id="anxious_prospective",
+                seed=0,
+                skip_quality_judge=True,
+                max_days=7,
+                mode="pressure",
+                turns_per_day=1,
+                chat_fn=chat_fn,
+                greeting_fn=lambda *_args: {"greeting": "hello"},
+            ))
+
+        records = [
+            e["data"] for e in events
+            if e["event"] == "episode"
+        ]
+
+        self.assertEqual(records[0]["action"], "idle_gap")
+        self.assertEqual(records[0]["from_day"], 0)
+        self.assertEqual(records[0]["to_day"], 2)
+        self.assertEqual(records[1]["action"], "chat")
+        self.assertEqual(records[1]["day"], 3)
 
     def test_streaming_pressure_mode_uses_pressure_generator_only(self):
         def chat_fn(user_id, user_msg, raw_data_dir):

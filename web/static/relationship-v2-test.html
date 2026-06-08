@@ -462,6 +462,69 @@
     gap: 4px;
   }
 
+  /* Memory audit */
+  .memory-audit {
+    margin-top: 10px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: var(--surface);
+    overflow: hidden;
+  }
+  .memory-audit summary {
+    cursor: pointer;
+    padding: 10px 12px;
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: var(--teal);
+    background: var(--bg);
+  }
+  .memory-audit-body {
+    padding: 10px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .memory-audit-flags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .audit-flag {
+    display: inline-block;
+    padding: 3px 8px;
+    border-radius: 4px;
+    font-size: 0.7rem;
+    border: 1px solid var(--line);
+    background: var(--surface);
+    color: var(--muted);
+  }
+  .audit-flag.pass { background: var(--green-soft); color: var(--green); border-color: var(--green); }
+  .audit-flag.warn { background: var(--gold-soft); color: var(--gold); border-color: var(--gold); }
+  .audit-flag.fail { background: var(--red-soft); color: var(--red); border-color: var(--red); }
+  .memory-audit-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  .memory-audit-block {
+    padding: 8px;
+    border-radius: 4px;
+    background: var(--bg);
+    font-size: 0.78rem;
+    line-height: 1.5;
+    min-width: 0;
+  }
+  .memory-audit-title {
+    display: block;
+    margin-bottom: 4px;
+    color: var(--muted);
+    font-weight: 700;
+  }
+  .memory-audit-line {
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
   /* Violations */
   .violation-item {
     margin-top: 8px;
@@ -682,6 +745,78 @@
       </div>`;
   }
 
+  function formatAuditValue(value) {
+    if (value == null || value === '') return '空';
+    if (typeof value === 'object') return JSON.stringify(value);
+    return String(value);
+  }
+
+  function renderAuditLines(items, emptyText) {
+    if (!items || !items.length) {
+      return `<div class="memory-audit-line">${escapeHtml(emptyText)}</div>`;
+    }
+    return items.map(item => `<div class="memory-audit-line">${escapeHtml(item)}</div>`).join('');
+  }
+
+  function renderMemoryAuditPanel(r) {
+    const audit = r.memory_audit;
+    if (!audit) return '';
+
+    const after = audit.relationship_after || {};
+    const hook = after.next_hook || {};
+    const flags = audit.audit_flags || [];
+    const relationshipChanges = audit.relationship_changes || [];
+    const memoryEvents = audit.memory_events || [];
+    const longTerm = audit.long_term_memories || [];
+
+    const flagHtml = flags.length
+      ? flags.map(f => `<span class="audit-flag ${escapeHtml(f.severity || 'info')}">${escapeHtml(f.label || f.type || '记忆提示')}</span>`).join('')
+      : '<span class="audit-flag">本轮无明显记忆变化</span>';
+
+    const relationshipSummary = [
+      `core_concern: ${after.core_concern || '空'}`,
+      `growth_intent: ${after.growth_intent || '空'}`,
+      `next_hook: ${hook.topic || 'none'} / ${hook.active ? 'active' : 'inactive'}`,
+    ];
+
+    const changeLines = relationshipChanges.map(c =>
+      `${c.field}: ${formatAuditValue(c.before)} -> ${formatAuditValue(c.after)}`
+    );
+    const eventLines = memoryEvents.map(e => {
+      const m = e.memory || {};
+      return `${e.action}: [${m.type || 'misc'}] ${m.content || ''}`;
+    });
+    const memoryLines = longTerm.map(m =>
+      `[${m.type || 'misc'}] ${m.content || ''} (${m.status || 'unknown'} / ${m.strength ?? '?'})`
+    );
+
+    return `
+      <details class="memory-audit" open>
+        <summary>记忆审计</summary>
+        <div class="memory-audit-body">
+          <div class="memory-audit-flags">${flagHtml}</div>
+          <div class="memory-audit-grid">
+            <div class="memory-audit-block">
+              <span class="memory-audit-title">关系状态记忆</span>
+              ${renderAuditLines(relationshipSummary, '无关系状态')}
+            </div>
+            <div class="memory-audit-block">
+              <span class="memory-audit-title">关系变化 relationship_changes</span>
+              ${renderAuditLines(changeLines, '本轮未改变关系状态')}
+            </div>
+            <div class="memory-audit-block">
+              <span class="memory-audit-title">长期记忆事件</span>
+              ${renderAuditLines(eventLines, '长期记忆未新增或更新')}
+            </div>
+            <div class="memory-audit-block">
+              <span class="memory-audit-title">当前长期记忆 long_term_memories</span>
+              ${renderAuditLines(memoryLines, '当前没有长期记忆')}
+            </div>
+          </div>
+        </div>
+      </details>`;
+  }
+
   function formatTurnLabel(r) {
     const turnIndex = r.turn_index || 1;
     const turnCount = r.turn_count || 1;
@@ -786,6 +921,8 @@
     html += `<span class="chip">表情 ${escapeHtml(r.expression || '?')}</span>`;
     html += `<span class="chip">动作 ${escapeHtml(formatCompanionAction(r.companion_action))}</span>`;
     html += '</div>';
+
+    html += renderMemoryAuditPanel(r);
 
     if (shouldShowManualReview(r)) {
       html += renderManualReviewPanel(r);

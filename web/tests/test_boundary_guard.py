@@ -14,7 +14,7 @@ class BoundaryGuardTest(unittest.TestCase):
         self.assertTrue(KNOWLEDGE_FILE.exists())
         data = guard.load_campus_life()
         self.assertIn("canteens", data)
-        self.assertEqual(len(data["canteens"]), 6)
+        self.assertEqual(len(data["canteens"]), 5)
 
     def test_speech_text_cuts_only_at_sentence_boundaries(self):
         text = "第一句完整。第二句也完整！第三句还完整。第四句继续。第五句不要播到一半。"
@@ -49,9 +49,10 @@ class BoundaryGuardTest(unittest.TestCase):
         reply = guard.template_reply("小芯，学校食堂都在哪里？每个食堂在几号楼几层？")
 
         self.assertIsNotNone(reply)
-        for canteen in ("北秀食堂", "晨苑餐厅", "学苑餐厅", "二食堂", "休闲餐厅", "石榴红餐厅"):
+        for canteen in ("北秀食堂", "晨苑餐厅", "学苑餐厅", "二食堂", "石榴红餐厅"):
             with self.subTest(canteen=canteen):
                 self.assertIn(canteen, reply)
+        self.assertNotIn("休闲餐厅", reply)
         self.assertIn("几号楼几层", reply)
         self.assertIn("不敢乱说", reply)
 
@@ -107,6 +108,15 @@ class BoundaryGuardTest(unittest.TestCase):
             "到时候请你吃饭",
             "北秀那家卤肉饭可够味，我记下了。周末等你过来。[smile]",
         ))
+
+    def test_food_violation_detector_catches_unverified_queue_claims(self):
+        violations = guard.detect_reply_violations(
+            "行啊，课程放一边！那最近学校食堂去打卡了没？",
+            "北校的北秀食堂有家面馆挺多人排队的，你去过没？[smile]",
+        )
+
+        types = {item["type"] for item in violations}
+        self.assertIn("编造餐饮实时状态", types)
 
     def test_reply_violation_detector_catches_promised_contact_fetching(self):
         violations = guard.detect_reply_violations(

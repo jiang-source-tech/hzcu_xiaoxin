@@ -269,9 +269,27 @@ def detect_reply_violations(user_msg: str, reply: str) -> list[dict]:
     violations = []
 
     food_context = contains_any(combined, (
+        "北秀", "面馆",
         "食堂", "餐厅", "夜宵", "吃饭", "卤肉饭", "肉肉饭", "煎包", "瘦肉丸", "麻辣烫", "香锅",
     ))
     if food_context:
+        for phrase in (
+            "排队", "人很多", "人好多", "很多人", "挺多人", "人不少",
+            "打卡", "网红", "很火", "爆满", "拥挤", "挤满",
+        ):
+            if phrase in clean:
+                if contains_any(clean, (
+                    "不能乱说", "不敢乱说", "不能确定", "不确定",
+                    "不知道", "没法知道", "没有实时", "不掌握实时",
+                )):
+                    continue
+                violations.append({
+                    "type": "编造餐饮实时状态",
+                    "evidence": phrase,
+                    "detail": "知识库没有食堂实时人流、排队、热度或打卡情况，不能编造这类运营状态。",
+                })
+                break
+
         for phrase in ("我记下了", "记下了", "记住了"):
             if phrase in clean:
                 violations.append({

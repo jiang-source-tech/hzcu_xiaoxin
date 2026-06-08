@@ -37,7 +37,11 @@ class RelationshipV2IntegrationTest(unittest.TestCase):
     def test_scene_episodes_have_reasonable_structure(self):
         for scene in scene_runner.load_all_scenes():
             days = [ep["day"] for ep in scene["episodes"]]
-            self.assertEqual(days, sorted(days),
+            day_order = [
+                tuple(day) if isinstance(day, list) else (day, day)
+                for day in days
+            ]
+            self.assertEqual(day_order, sorted(day_order),
                              f"{scene['scene_id']}: episodes not in day order")
 
     def test_rule_evaluator_integration_detects_boundary_violations(self):

@@ -8,12 +8,15 @@ from __future__ import annotations
 
 import json
 import random
+import copy
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable, Generator
 
 import relationship_state
 import rule_evaluator
+import boundary_guard as guard
+import turn_analyzer
 import user_simulator
 
 
@@ -79,6 +82,43 @@ def resolve_episode_days(episodes: list[dict[str, Any]], seed: int) -> list[dict
     return resolved
 
 
+def random_user_initiated_episodes(
+    scene: dict[str, Any],
+    seed: int,
+    max_days: int | None,
+    mode: str,
+) -> list[dict[str, Any]]:
+    """Build a random timeline where interactions are user-initiated chats."""
+    if mode == "regression" or max_days is None:
+        return resolve_episode_days(scene["episodes"], seed)
+
+    max_days = max(0, int(max_days))
+    resolved = resolve_episode_days(scene["episodes"], seed)
+    chat_templates = [ep for ep in resolved if ep.get("action") == "chat"]
+    if not chat_templates:
+        return []
+
+    if max_days == 0:
+        active_days = [0]
+    else:
+        rng = random.Random(seed)
+        active_days = [
+            day for day in range(max_days + 1)
+            if rng.random() < 0.42
+        ]
+        if not active_days:
+            active_days = [rng.randint(0, max_days)]
+
+    plan = []
+    for index, day in enumerate(active_days):
+        template = copy.deepcopy(chat_templates[index % len(chat_templates)])
+        template["day"] = day
+        template["action"] = "chat"
+        template["probes"] = {}
+        plan.append(template)
+    return plan
+
+
 def summarize_conversation(records: list[dict[str, Any]]) -> str:
     """Build a short summary of the conversation so far for the user LLM."""
     if not records:
@@ -93,6 +133,176 @@ def summarize_conversation(records: list[dict[str, Any]]) -> str:
             lines.append(f"新生: {r.get('user_message', '')}")
             lines.append(f"小芯: {r['xiaoxin_reply']}")
     return "\n".join(lines)
+
+
+def relationship_audit_snapshot(state: dict[str, Any] | None) -> dict[str, Any]:
+    """Return relationship fields that matter for memory review."""
+    state = state or relationship_state.default_state()
+    public = relationship_state.public_state(state)
+    return {
+        **public,
+        "core_concern": state.get("core_concern", ""),
+        "growth_intent": state.get("growth_intent", ""),
+        "next_hook": state.get("next_hook"),
+        "last_active_at": state.get("last_active_at"),
+        "last_greeting_date": state.get("last_greeting_date"),
+    }
+
+
+def relationship_changes(
+    before: dict[str, Any],
+    after: dict[str, Any],
+) -> list[dict[str, Any]]:
+    """List relationship-state fields that changed in one turn."""
+    keys = [
+        "user_stage",
+        "recent_mood",
+        "recent_topic",
+        "relationship_level",
+        "core_concern",
+        "growth_intent",
+        "next_hook",
+    ]
+    changes = []
+    for key in keys:
+        if before.get(key) != after.get(key):
+            changes.append({"field": key, "before": before.get(key), "after": after.get(key)})
+    return changes
+
+
+def load_long_term_memories(data_dir: Path, user_id: str) -> list[dict[str, Any]]:
+    """Load compact long-term memory rows for audit display."""
+    path = Path(data_dir) / f"memory_{user_id}.json"
+    if not path.exists():
+        return []
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return []
+    memories = []
+    for item in data.get("memories", []):
+        memories.append({
+            "id": item.get("id", ""),
+            "content": item.get("content", ""),
+            "type": item.get("type", "misc"),
+            "importance": item.get("importance"),
+            "strength": item.get("strength"),
+            "status": item.get("status", ""),
+        })
+    return memories
+
+
+def memory_events(
+    before: list[dict[str, Any]],
+    after: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Summarize created, updated, and removed long-term memories."""
+    before_by_id = {m.get("id"): m for m in before if m.get("id")}
+    after_by_id = {m.get("id"): m for m in after if m.get("id")}
+    events = []
+
+    for mid, item in after_by_id.items():
+        if mid not in before_by_id:
+            events.append({"action": "created", "memory": item})
+        elif before_by_id[mid] != item:
+            events.append({
+                "action": "updated",
+                "before": before_by_id[mid],
+                "memory": item,
+            })
+
+    for mid, item in before_by_id.items():
+        if mid not in after_by_id:
+            events.append({"action": "removed", "memory": item})
+
+    return events
+
+
+def build_audit_flags(
+    user_msg: str,
+    reply_text: str,
+    analysis: dict[str, Any],
+    rel_changes: list[dict[str, Any]],
+    mem_events: list[dict[str, Any]],
+) -> list[dict[str, str]]:
+    """Create human-readable memory audit flags for the UI."""
+    flags = []
+    changed_fields = {item["field"] for item in rel_changes}
+    relationship_memory_changed = bool(
+        {"core_concern", "growth_intent", "next_hook"} & changed_fields
+    )
+
+    if analysis.get("memory_worthy"):
+        if relationship_memory_changed:
+            flags.append({
+                "severity": "pass",
+                "type": "relationship_memory_written",
+                "label": "关系记忆已更新",
+            })
+        else:
+            flags.append({
+                "severity": "warn",
+                "type": "relationship_memory_missing",
+                "label": "本轮值得记住，但关系记忆没有明显变化",
+            })
+
+    should_skip = guard.should_skip_memory(user_msg)
+    if should_skip and mem_events:
+        flags.append({
+            "severity": "fail",
+            "type": "unexpected_long_term_memory",
+            "label": "本轮不应写长期记忆，但 memory 文件发生变化",
+        })
+    elif should_skip:
+        flags.append({
+            "severity": "pass",
+            "type": "long_term_memory_skipped",
+            "label": "长期记忆正确跳过",
+        })
+    elif mem_events:
+        flags.append({
+            "severity": "pass",
+            "type": "long_term_memory_changed",
+            "label": "长期记忆已写入或更新",
+        })
+
+    if any(token in reply_text for token in ("之前", "提过", "聊到", "上次")):
+        flags.append({
+            "severity": "info",
+            "type": "prior_memory_reference",
+            "label": "回复中出现旧线索引用",
+        })
+
+    return flags
+
+
+def build_memory_audit(
+    data_dir: Path,
+    user_id: str,
+    user_msg: str,
+    reply_text: str,
+    relationship_before: dict[str, Any],
+    relationship_after: dict[str, Any],
+    memories_before: list[dict[str, Any]],
+    memories_after: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Build the per-turn audit payload consumed by relationship-test."""
+    before_snapshot = relationship_audit_snapshot(relationship_before)
+    after_snapshot = relationship_audit_snapshot(relationship_after)
+    analysis = turn_analyzer.analyze(user_msg, relationship_before)
+    rel_changes = relationship_changes(before_snapshot, after_snapshot)
+    mem_events = memory_events(memories_before, memories_after)
+    return {
+        "relationship_before": before_snapshot,
+        "turn_analysis": analysis,
+        "relationship_after": after_snapshot,
+        "relationship_changes": rel_changes,
+        "long_term_memories": memories_after,
+        "memory_events": mem_events,
+        "audit_flags": build_audit_flags(
+            user_msg, reply_text, analysis, rel_changes, mem_events
+        ),
+    }
 
 
 def compute_overall_result(
@@ -288,8 +498,18 @@ def build_idle_gap_record(
     if previous_day is None or next_day - previous_day <= 1:
         return None
 
-    from_day = previous_day + 1
-    to_day = next_day - 1
+    return build_idle_gap_range(scene, previous_day + 1, next_day - 1)
+
+
+def build_idle_gap_range(
+    scene: dict[str, Any],
+    from_day: int,
+    to_day: int,
+) -> dict[str, Any] | None:
+    """Create a visible idle record for an inclusive day range."""
+    if to_day < from_day:
+        return None
+
     label = f"Day {from_day}" if from_day == to_day else f"Day {from_day}-{to_day}"
     gap_days = to_day - from_day + 1
     return {
@@ -443,6 +663,7 @@ def run_scene_streaming(
     turns_per_day: int | None = None,
     chat_fn: Callable[[str, str, str], dict[str, Any]] | None = None,
     greeting_fn: Callable[[str, str, str], dict[str, Any]] | None = None,
+    memory_fn: Callable[[str, str, str, str], Any] | None = None,
     base_date: datetime | None = None,
 ) -> Generator[dict[str, Any], None, None]:
     """逐 episode 产出 SSE 事件。供 web API 使用。
@@ -462,6 +683,9 @@ def run_scene_streaming(
     mode = validate_run_mode(mode)
     if turns_per_day is not None:
         turns_per_day = max(1, min(MAX_TURNS_PER_DAY, int(turns_per_day)))
+    if memory_fn is None:
+        def memory_fn(uid, msg, reply, dd):
+            return None
 
     # 加载场景
     scenes = load_all_scenes()
@@ -511,15 +735,25 @@ def run_scene_streaming(
         episode_seed = seed
         previous_interaction_day = None
 
-        resolved_episodes = resolve_episode_days(scene["episodes"], seed)
+        resolved_episodes = random_user_initiated_episodes(
+            scene, seed, max_days, mode
+        )
 
         for i, episode in enumerate(resolved_episodes):
             if max_days is not None and episode["day"] > max_days:
                 continue
 
-            gap_record = build_idle_gap_record(
-                scene, previous_interaction_day, episode["day"]
-            )
+            if (
+                previous_interaction_day is None
+                and mode != "regression"
+                and max_days is not None
+                and episode["day"] > 0
+            ):
+                gap_record = build_idle_gap_range(scene, 0, episode["day"] - 1)
+            else:
+                gap_record = build_idle_gap_record(
+                    scene, previous_interaction_day, episode["day"]
+                )
             if gap_record:
                 records.append(gap_record)
                 yield {"event": "episode", "data": gap_record}
@@ -604,10 +838,15 @@ def run_scene_streaming(
                             forbid_patterns=forbid, seed=ep_seed + turn_offset,
                         )
 
+                    relationship_before = relationship_state.load_state(data_dir, user_id)
+                    memories_before = load_long_term_memories(data_dir, user_id)
+
                     payload = chat_fn(user_id, user_msg, str(data_dir))
                     state = relationship_state.load_state(data_dir, user_id)
                     next_hook = state.get("next_hook") or {}
                     reply_text = str(payload.get("reply") or payload.get("greeting") or "")
+                    memory_fn(user_id, user_msg, reply_text, str(data_dir))
+                    memories_after = load_long_term_memories(data_dir, user_id)
 
                     violations = rule_evaluator.evaluate_episode(
                         probes=probes, state=state, next_hook=next_hook,
@@ -627,6 +866,16 @@ def run_scene_streaming(
                         "companion_action": payload.get("companion_action"),
                         "state": relationship_state.public_state(state),
                         "next_hook": next_hook, "violations": violations,
+                        "memory_audit": build_memory_audit(
+                            data_dir=data_dir,
+                            user_id=user_id,
+                            user_msg=user_msg,
+                            reply_text=reply_text,
+                            relationship_before=relationship_before,
+                            relationship_after=state,
+                            memories_before=memories_before,
+                            memories_after=memories_after,
+                        ),
                         "review_context": build_review_context(
                             episode, user_msg, reply_text, intent, turn_index, turn_count
                         ),
@@ -647,6 +896,17 @@ def run_scene_streaming(
 
         # 质量裁判
             previous_interaction_day = episode["day"]
+
+        if max_days is not None:
+            if previous_interaction_day is None:
+                trailing_gap = build_idle_gap_range(scene, 0, max(0, max_days))
+            else:
+                trailing_gap = build_idle_gap_record(
+                    scene, previous_interaction_day, max(0, max_days) + 1
+                )
+            if trailing_gap:
+                records.append(trailing_gap)
+                yield {"event": "episode", "data": trailing_gap}
 
         quality_result = None
         if not skip_quality_judge and records:

@@ -994,6 +994,14 @@ def v2_relationship_run():
         if turns_per_day < 1 or turns_per_day > 30:
             return jsonify({"error": "turns_per_day must be between 1 and 30"}), 400
 
+    def save_test_memory(uid, msg, reply, dd):
+        old_data_dir = globals()["DATA_DIR"]
+        globals()["DATA_DIR"] = Path(dd)
+        try:
+            return auto_save_memory(uid, msg, reply)
+        finally:
+            globals()["DATA_DIR"] = old_data_dir
+
     def generate():
         try:
             for event in scene_runner_v2.run_scene_streaming(
@@ -1004,6 +1012,7 @@ def v2_relationship_run():
                 mode=mode,
                 turns_per_day=turns_per_day,
                 chat_fn=lambda uid, msg, dd: chat_core(uid, msg, dd),
+                memory_fn=save_test_memory,
                 greeting_fn=lambda uid, today, dd: relationship_state.greeting_payload(
                     Path(dd), uid, today=today
                 ),

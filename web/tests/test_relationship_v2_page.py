@@ -114,6 +114,21 @@ class RelationshipV2PageTest(unittest.TestCase):
             with self.subTest(snippet=snippet):
                 self.assertIn(snippet, self.html)
 
+    def test_page_exposes_memory_audit_panel(self):
+        expected_snippets = [
+            "renderMemoryAuditPanel",
+            "memory-audit",
+            "memory_audit",
+            "relationship_changes",
+            "long_term_memories",
+            "audit_flags",
+            "记忆审计",
+        ]
+
+        for snippet in expected_snippets:
+            with self.subTest(snippet=snippet):
+                self.assertIn(snippet, self.html)
+
 
 if __name__ == "__main__":
     unittest.main()
