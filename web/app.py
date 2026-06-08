@@ -306,6 +306,10 @@ def chat_core(user_id: str, user_msg: str, data_dir: str | None = None, history:
 
     # 构建 system prompt + 对话历史
     system_prompt = build_system_prompt(user_id, relationship, turn_analysis)
+    # 注入 campus_directory 地点事实参考，防止模型幻觉编造
+    location_context = guard.build_location_context(user_msg)
+    if location_context:
+        system_prompt += location_context
     messages = [{"role": "system", "content": system_prompt}]
     # 注入最近 6 条历史（同一天内的上下文），让模型能理解追问
     if history:
@@ -503,6 +507,10 @@ def chat():
 
     # 构建 system prompt
     system_prompt = build_system_prompt(user_id, relationship, turn_analysis)
+    # 注入 campus_directory 地点事实参考，防止模型幻觉编造
+    location_context = guard.build_location_context(user_msg)
+    if location_context:
+        system_prompt += location_context
     print(f"[SYSTEM] prompt length: {len(system_prompt)} chars")
 
     # 构建 messages（只送最近 20 条给 API）

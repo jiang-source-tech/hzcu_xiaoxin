@@ -90,6 +90,55 @@ def match_location_query(user_msg: str) -> str | None:
     return best.get("answer", "")
 
 
+def build_location_context(user_msg: str) -> str:
+    """收集所有匹配的 campus_directory 条目，作为事实参考注入 system prompt。
+
+    与 match_location_query 不同：此函数收集全部匹配条目（上限 3 个），
+    格式化后供模型在回复中参考，防止幻觉编造。
+    返回空字符串表示无匹配。
+    """
+    data = load_campus_directory()
+    entries = data.get("entries", [])
+    if not entries:
+        return ""
+
+    candidates: list[tuple[float, dict]] = []
+    for entry in entries:
+        score = 0.0
+        keywords = entry.get("search_keywords", []) + entry.get("aliases", [])
+        for kw in keywords:
+            if kw in user_msg:
+                score += 1.0 + len(kw) * 0.1
+        q_clean = entry.get("question", "").replace("？", "").replace("（", "").replace("）", "")
+        q_bigrams = {q_clean[i:i+2] for i in range(len(q_clean)-1)}
+        msg_bigrams = {user_msg[i:i+2] for i in range(len(user_msg)-1)}
+        overlap = q_bigrams & msg_bigrams
+        score += len(overlap) * 0.2
+        if score >= 0.5:
+            candidates.append((score, entry))
+
+    if not candidates:
+        return ""
+
+    candidates.sort(key=lambda x: x[0], reverse=True)
+    facts = []
+    for _, entry in candidates[:3]:
+        answer = entry.get("answer", "")
+        if answer:
+            facts.append(f"- {answer}")
+
+    if not facts:
+        return ""
+
+    header = (
+        "\n\n" +
+        "【以下是你本地知识库中关于校园地点的确定事实，你可以用自然的学长口吻组织回答。" +
+        "不要编造不在下列事实中的建筑位置关系（如在XX旁边、过了XX就是）、" +
+        "交通方式（如天桥/地下通道/摆渡车）和周边地标。不确定就说不太确定。】\n"
+    )
+    return header + "\n".join(facts)
+
+
 def format_canteen_locations() -> str:
     campus_groups: dict[str, list[str]] = {}
     unspecific = []
