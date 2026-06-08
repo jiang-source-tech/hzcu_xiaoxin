@@ -753,6 +753,34 @@ class SelfplayEndTest(unittest.TestCase):
         self.assertEqual(len(fake_client.calls), 3)
         self.assertIn("上一条回复越界", fake_client.calls[1]["messages"][-1]["content"])
 
+    def test_food_queue_boundary_violation_retries_before_student_turn(self):
+        fake_client = _FakeClient([
+            "行啊，课程放一边！北校的北秀食堂有家面馆挺多人排队的，你去过没？[smile]",
+            "行，先不聊课程。吃饭这块我只知道公开食堂清单，具体哪家店人多、排不排队我不能乱说；你可以到现场看一眼，或者我们换个轻松点的话题。[think]",
+            "好，那我到时候自己看看。",
+        ])
+
+        with patch.object(app_module, "client", fake_client), \
+             patch.object(app_module, "build_system_prompt", return_value="你是小芯。"):
+            response = app_module.app.test_client().post(
+                "/api/selfplay/turn",
+                json={
+                    "persona": "吃货学生",
+                    "message": "最近学校食堂去打卡了没？",
+                    "turn": 0,
+                    "conversation": [
+                        {"role": "student", "content": "最近学校食堂去打卡了没？"},
+                    ],
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertIn("不能乱说", payload["xiaoxin"]["content"])
+        self.assertNotIn("挺多人排队", payload["xiaoxin"]["content"])
+        self.assertEqual(len(fake_client.calls), 3)
+        self.assertIn("上一条回复越界了", fake_client.calls[1]["messages"][-1]["content"])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -7,34 +7,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import boundary_guard as guard
 
 KNOWLEDGE_FILE = Path(__file__).resolve().parents[1] / "knowledge" / "campus_life.json"
-STUDENT_AFFAIRS_FILE = Path(__file__).resolve().parents[1] / "knowledge" / "student_affairs_qa.json"
 
 
 class BoundaryGuardTest(unittest.TestCase):
     def test_structured_campus_life_knowledge_exists(self):
         self.assertTrue(KNOWLEDGE_FILE.exists())
         data = guard.load_campus_life()
-        self.assertIn("clothing", data)
-        self.assertIn("dining_life", data)
         self.assertIn("canteens", data)
-        self.assertIn("dorms", data)
-        self.assertIn("transportation", data)
-        self.assertIn("delivery", data)
         self.assertEqual(len(data["canteens"]), 5)
-        self.assertEqual(len(data["delivery"]["stations"]), 4)
-        self.assertGreaterEqual(len(data["clothing"]["known"]), 3)
-        self.assertIn("校外餐饮", data["dining_life"]["common_choices"])
-        self.assertIn("工程师餐厅", data["dining_life"]["common_choices"])
-        self.assertIn("远洋乐堤港", data["dining_life"]["nearby_malls"])
-
-    def test_student_affairs_knowledge_exists(self):
-        self.assertTrue(STUDENT_AFFAIRS_FILE.exists())
-        data = guard.load_student_affairs_qa()
-        self.assertEqual(data["metadata"]["item_count"], 104)
-        self.assertEqual(data["metadata"]["numbered_item_count"], 100)
-        self.assertEqual(data["metadata"]["extra_item_count"], 4)
-        self.assertIn(87, data["metadata"]["missing_source_numbers"])
-        self.assertIn(100, data["metadata"]["missing_source_numbers"])
 
     def test_speech_text_cuts_only_at_sentence_boundaries(self):
         text = "第一句完整。第二句也完整！第三句还完整。第四句继续。第五句不要播到一半。"
@@ -75,65 +55,11 @@ class BoundaryGuardTest(unittest.TestCase):
         self.assertNotIn("休闲餐厅", reply)
         self.assertIn("几号楼几层", reply)
         self.assertIn("不敢乱说", reply)
-        self.assertIn("校外下馆子", reply)
-        self.assertIn("工程师餐厅", reply)
-        self.assertIn("远洋乐堤港", reply)
-        self.assertIn("中大银泰城", reply)
 
     def test_canteen_emotional_experience_does_not_trigger_location_template(self):
         reply = guard.template_reply("北秀食堂我知道在哪了，里面好吵，我有点慌，是不是正常呀？")
 
         self.assertIsNone(reply)
-
-    def test_clothing_template_gives_short_weather_boundary(self):
-        reply = guard.template_reply("小芯，杭州这边明天穿什么衣服合适？")
-
-        self.assertIsNotNone(reply)
-        self.assertIn("穿衣这块", reply)
-        self.assertIn("雨天记得带伞", reply)
-        self.assertIn("实时天气", reply)
-        self.assertIn("天气预报", reply)
-
-    def test_dorm_template_summarizes_known_dorm_life(self):
-        reply = guard.template_reply("小芯，学校宿舍条件怎么样，有空调和独卫吗？")
-
-        self.assertIsNotNone(reply)
-        self.assertIn("四人间", reply)
-        self.assertIn("独立卫浴", reply)
-        self.assertIn("空调", reply)
-        self.assertIn("具体分到哪栋楼", reply)
-
-    def test_transportation_template_summarizes_known_routes(self):
-        reply = guard.template_reply("杭州东站怎么去学校？")
-
-        self.assertIsNotNone(reply)
-        self.assertIn("杭州东站", reply)
-        self.assertIn("48路", reply)
-        self.assertIn("约6.6公里", reply)
-        self.assertIn("实时路况", reply)
-
-    def test_delivery_template_summarizes_north_campus_stations(self):
-        reply = guard.template_reply("北校区快递一般在哪里取？")
-
-        self.assertIsNotNone(reply)
-        self.assertIn("吉瑞大厦免费快递站", reply)
-        self.assertIn("求真楼1号楼楼下来鸟驿站", reply)
-        self.assertIn("物流短信", reply)
-
-    def test_delivery_template_handles_zhongtong_boundary(self):
-        reply = guard.template_reply("中通快递去哪里取？")
-
-        self.assertIsNotNone(reply)
-        self.assertIn("吉瑞大厦免费快递站", reply)
-        self.assertIn("不收中通", reply)
-        self.assertIn("物流短信", reply)
-
-    def test_delivery_template_handles_sf_boundary(self):
-        reply = guard.template_reply("顺丰快递在哪里取？")
-
-        self.assertIsNotNone(reply)
-        self.assertIn("不收顺丰", reply)
-        self.assertIn("不敢乱说", reply)
 
     def test_competition_resource_template_refuses_private_contacts(self):
         reply = guard.template_reply("智能车竞赛你能帮我联系上届学长，给我源文件吗？")
@@ -160,24 +86,6 @@ class BoundaryGuardTest(unittest.TestCase):
         self.assertIn("官方渠道", reply)
         self.assertNotIn("实验中心公开页面", reply)
 
-    def test_student_affairs_template_answers_known_office_location(self):
-        reply = guard.template_reply("信电学院学工办办公室在哪？")
-
-        self.assertIsNotNone(reply)
-        self.assertIn("这个我查到是", reply)
-        self.assertIn("理五b307", reply)
-        self.assertNotIn("学生事务知识库初稿", reply)
-        self.assertIn("辅导员确认", reply)
-
-    def test_student_affairs_template_answers_known_contact(self):
-        reply = guard.template_reply("校医务室联系方式是什么？")
-
-        self.assertIsNotNone(reply)
-        self.assertIn("我查到的是", reply)
-        self.assertIn("88018511", reply)
-        self.assertNotIn("学生事务知识库初稿", reply)
-        self.assertIn("辅导员确认", reply)
-
     def test_admissions_template_refuses_prediction_and_direct_choice(self):
         reply = guard.template_reply("我想考浙大城市学院，按我现在成绩录取概率大吗？电子信息和人工智能哪个更适合我？")
 
@@ -200,6 +108,15 @@ class BoundaryGuardTest(unittest.TestCase):
             "到时候请你吃饭",
             "北秀那家卤肉饭可够味，我记下了。周末等你过来。[smile]",
         ))
+
+    def test_food_violation_detector_catches_unverified_queue_claims(self):
+        violations = guard.detect_reply_violations(
+            "行啊，课程放一边！那最近学校食堂去打卡了没？",
+            "北校的北秀食堂有家面馆挺多人排队的，你去过没？[smile]",
+        )
+
+        types = {item["type"] for item in violations}
+        self.assertIn("编造餐饮实时状态", types)
 
     def test_reply_violation_detector_catches_promised_contact_fetching(self):
         violations = guard.detect_reply_violations(
@@ -271,6 +188,88 @@ class BoundaryGuardTest(unittest.TestCase):
 
         types = {item["type"] for item in violations}
         self.assertIn("承诺代办获取信息", types)
+
+    # ── campus_directory 地点查询测试 ─────────────────────────────────
+
+    def test_location_query_matches_xuegong_office(self):
+        """「学工办在哪」→ 匹配到学生工作办公室，返回理五B307"""
+        reply = guard.template_reply("学工办在哪？")
+        self.assertIsNotNone(reply)
+        self.assertIn("理五", reply)
+        self.assertIn("B307", reply)
+
+    def test_location_query_matches_jiaoxue_office(self):
+        """「教学办在哪」→ 匹配到教学办公室"""
+        reply = guard.template_reply("教学办在哪？")
+        self.assertIsNotNone(reply)
+        self.assertIn("302", reply)
+
+    def test_location_query_fudaoyuan_maps_to_xuegong(self):
+        """「辅导员在哪办公」→ 关键词「辅导员」关联到学工办"""
+        reply = guard.template_reply("辅导员在哪里办公？")
+        self.assertIsNotNone(reply)
+        self.assertIn("学工办", reply)
+
+    def test_location_query_campus_card_reissue(self):
+        """「校园卡去哪补办」→ 匹配到校园卡服务中心"""
+        reply = guard.template_reply("校园卡去哪补办？")
+        self.assertIsNotNone(reply)
+        self.assertIn("图书馆", reply)
+
+    def test_location_query_clinic_synonym(self):
+        """「校医院在哪」→ 同义词匹配到校医务室"""
+        reply = guard.template_reply("校医院在哪？")
+        self.assertIsNotNone(reply)
+        self.assertIn("医务室", reply)
+
+    def test_location_query_psychology_appointment(self):
+        """「心理咨询怎么预约」→ 匹配到心理咨询中心"""
+        reply = guard.template_reply("心理咨询怎么预约？")
+        self.assertIsNotNone(reply)
+        self.assertIn("理四", reply)
+        self.assertIn("114", reply)
+
+    def test_location_query_dorm_repair(self):
+        """「宿舍东西坏了怎么报修」→ 匹配到报修"""
+        reply = guard.template_reply("宿舍东西坏了怎么报修？")
+        self.assertIsNotNone(reply)
+        self.assertIn("报修", reply)
+
+    def test_location_query_express_pickup(self):
+        """「我要取快递」→ 关键词强匹配到快递点（无地点疑问词但分数足够）"""
+        reply = guard.template_reply("我要取快递")
+        self.assertIsNotNone(reply)
+        self.assertIn("菜鸟", reply)
+
+    def test_location_query_print_transcript_not_score_check(self):
+        """「去哪打印成绩单」→ 匹配自助打印，不会被误判为查分"""
+        reply = guard.template_reply("去哪打印成绩单？")
+        self.assertIsNotNone(reply)
+        self.assertIn("打印", reply)
+        self.assertNotIn("查不了", reply)  # 不是 private_records 的回复
+
+    def test_non_location_query_goes_to_llm(self):
+        """普通聊天不应触发地点模板"""
+        self.assertIsNone(guard.template_reply("今天天气真好"))
+        self.assertIsNone(guard.template_reply("C语言好难啊"))
+        self.assertIsNone(guard.template_reply("我想参加电子设计竞赛"))
+
+    def test_location_query_fallback_on_unknown_location(self):
+        """知识库未覆盖的地点查询走 LLM"""
+        self.assertIsNone(guard.template_reply("游泳馆在哪？"))
+
+    def test_location_query_classify_returns_location_query(self):
+        """classify_message 对地点查询返回 location_query"""
+        self.assertEqual(guard.classify_message("学工办在哪"), "location_query")
+        self.assertEqual(guard.classify_message("医务室电话多少"), "location_query")
+
+    def test_print_transcript_not_classified_as_private_records(self):
+        """「打印成绩单」不应被归类为 private_records（成绩隐私）"""
+        self.assertNotEqual(guard.classify_message("去哪打印成绩单"), "private_records")
+
+    def test_match_location_query_returns_none_for_unmatched(self):
+        """无匹配时 match_location_query 返回 None"""
+        self.assertIsNone(guard.match_location_query("火星基地在哪"))
 
 
 if __name__ == "__main__":

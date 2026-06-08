@@ -36,9 +36,10 @@ class SkillBoundariesTest(unittest.TestCase):
         self.assertNotIn("「代码跑不通？正常，学长当年debug了两天两夜", self.skill)
 
     def test_canteen_answers_require_complete_known_list_and_location_boundary(self):
-        for canteen in ("北秀食堂", "晨苑餐厅", "学苑餐厅", "二食堂", "休闲餐厅", "石榴红餐厅"):
+        for canteen in ("北秀食堂", "晨苑餐厅", "学苑餐厅", "二食堂", "石榴红餐厅"):
             with self.subTest(canteen=canteen):
                 self.assertIn(canteen, self.skill)
+        self.assertNotIn("休闲餐厅", self.skill)
 
         self.assertIn("食堂回答规则", self.skill)
         self.assertIn("必须先完整列出知识库中的餐饮点", self.skill)

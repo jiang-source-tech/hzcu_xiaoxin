@@ -1,0 +1,40 @@
+{
+  "scene_id": "socially_anxious",
+  "name": "社恐新生",
+  "description": "人际适应和孤独情绪承接，不过度追问，不标签化。",
+  "character": {
+    "stage": "prospective",
+    "traits": "你是一个刚被录取的准新生，性格很内向，担心开学后交不到朋友。说话简短、犹豫，偶尔用'嗯''不知道'。不要自己给自己贴'社恐'标签——你只是表达担心。每次1-2句话。"
+  },
+  "episodes": [
+    {
+      "day": 0,
+      "action": "chat",
+      "intent": "你有点担心开学后不容易交到朋友。用你自己的话跟小信说说，不要用'社恐'这种词。",
+      "forbid_patterns": ["社恐", "社交恐惧"],
+      "probes": {
+        "check_hook_topic": "social_adaptation",
+        "check_hook_active": true,
+        "not_contains": ["你就是社恐", "性格有问题"]
+      }
+    },
+    {
+      "day": 1,
+      "action": "greeting",
+      "intent": "你今天打开页面。",
+      "probes": {
+        "check_greeting_kind": "contextual"
+      }
+    },
+    {
+      "day": 3,
+      "action": "chat",
+      "intent": "你还是不太敢主动跟室友说话。把你的困扰告诉小信，语气低一点。",
+      "probes": {
+        "check_topic": "social_adaptation",
+        "check_hook_active": true,
+        "not_contains": ["必须", "你应该"]
+      }
+    }
+  ]
+}

@@ -30,8 +30,10 @@ load_dotenv()
 
 API_KEY = os.getenv("DEEPSEEK_API_KEY", "")
 MODEL = os.getenv("DEEPSEEK_MODEL", "deepseek-v4-flash")
-BASE_DIR = Path(__file__).parent.parent
+BASE_DIR = Path(__file__).resolve().parents[2]
 SKILL_FILE = BASE_DIR / "skills" / "xiaoxin-senior" / "SKILL.md"
+WEB_DIR = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(WEB_DIR))
 
 if not API_KEY:
     print("[错误] 请设置 DEEPSEEK_API_KEY")
