@@ -37,6 +37,7 @@ hzcu_xiaoxin/
 │       │   └── growth_protocol.md       # 成长协议（已有）
 │       ├── tools/
 │       │   ├── prompt_builder.py        # Prompt 组件组合工具（--action combine/list）
+│       │   ├── meta_manager.py          # 用户画像管理（--action init/load/update/stats/record-correction）
 │       │   ├── growth_tracker.py
 │       │   └── memory_manager.py
 │       └── data/
@@ -150,7 +151,7 @@ python app.py
        SKILL.md + 记忆 + 成长快照 + 关系状态 + 简短口语规则
   -> guard.safe_reply(user_msg)
        对食堂、快递、成绩单打印、校园地点、官方流程、收尾办事等事实/边界场景
-       用固定小芯句式 + 本地知识库事实直接组装回复，不调用模型
+       用受控小芯句式池 + 本地知识库事实直接组装回复，不调用模型
        避免模型补写银杏、钟楼、路线、风景等知识库没有的内容
   -> DeepSeek chat.completions.create()
        （仅 open_chat 等开放陪伴场景调用模型）
@@ -163,7 +164,7 @@ python app.py
   -> 返回 JSON
 ```
 
-> **架构变更（2026-06）**：guard 不再把事实问题交给模型自由改写。事实型办事回复由 `safe_reply()` 程序化生成：事实只来自本地知识库，语气只来自固定小芯句式；模型只负责开放陪伴聊天，并在回复后接受越界检测。
+> **架构变更（2026-06）**：guard 不再把事实问题交给模型自由改写。事实型办事回复由 `safe_reply()` 程序化生成：事实只来自本地知识库，语气来自受控小芯句式池；模型只负责开放陪伴聊天，并在回复后接受越界检测。
 
 `chat_core()`（v2 场景测试用）额外支持 `history` 参数，传入同日对话历史让模型能理解追问上下文。
 
@@ -364,13 +365,56 @@ SKILL.md
 - 组件文件按 Layer 0→5→附录 排列：`hard_rules.md`（硬规则）→ `identity.md`（身份）→ `speech_style.md`（风格）→ `mental_models.md`（心智模型）→ `knowledge_domains.md`（知识域）→ `response_workflow.md`（工作流）→ `example_dialogues.md` + `embedded_adaptation.md`（附录）。
 - 改测试页模拟用户行为：改 `STUDENT_PERSONAS` 和 `personaOpenings`。
 
+### 7.1 用户画像（meta.json）
+
+每个用户自动维护一个结构化画像文件 `data/meta_{user_id}.json`，由 `tools/meta_manager.py` 管理：
+
+```json
+{
+  "user_id": "default",
+  "profile": {
+    "name": "小明",
+    "major": "电子信息工程",
+    "grade": "大一",
+    "hometown": "绍兴",
+    "interests": ["机器人"]
+  },
+  "stats": {
+    "first_seen": "2026-03-15",
+    "total_chats": 42,
+    "last_active": "2026-06-08"
+  },
+  "corrections": [
+    {"timestamp": "...", "text": "我不是自动化专业，我是电子信息工程"}
+  ]
+}
+```
+
+画像信息在 `_ensure_session()` 首次创建时初始化，`auto_save_memory()` 检测到名字/专业/家乡/兴趣时自动同步更新，`build_system_prompt()` 将画像摘要注入 system prompt。
+
+### 7.2 对话纠正机制
+
+参考 `yourself-skill/prompts/correction_handler.md`，小芯支持用户在对话中自然纠正：
+
+- **检测**：`boundary_guard.is_correction_intent()` 匹配"不对""不是这样""你记错了""应该是""其实是"等纠正标记
+- **记录**：`record_chat_reply()` 检测到纠正意图时调用 `meta_manager.record_correction()` 写入 `meta_{user_id}.json` 的 `corrections` 字段
+- **注入**：`build_system_prompt()` 读取最近 5 条纠正，注入到 system prompt 尾部 `【用户近期纠正（请尊重以下信息）】` 段落
+- **限制**：最多保留 20 条纠正，注入最近 5 条；不做 Self Memory / Persona 分层分析，只做纯文本记录
+
+CLI 用法：
+```bash
+python tools/meta_manager.py --action init --data-dir data --user-id xiaoming --name 小明 --major 自动化
+python tools/meta_manager.py --action record-correction --data-dir data --user-id xiaoming --correction "我叫小北，不叫小明"
+python tools/meta_manager.py --action load --data-dir data --user-id xiaoming --format prompt
+```
+
 ## 8. 边界防护设计
 
 `boundary_guard.py` 是小芯的确定性防线，职责包括：
 
 - 清理模型泄露的推理标记。
 - 将带表情的回复转为适合 TTS 的短文本。
-- **确定性安全回复**：`safe_reply()` 对事实型办事、快递、食堂、成绩单打印、官方流程、收尾办事等场景直接组装小芯回复，不调用模型。
+- **确定性安全回复**：`safe_reply()` 对事实型办事、快递、食堂、成绩单打印、官方流程、收尾办事等场景直接组装小芯回复，不调用模型；行动确认等场景用 `stable_variant()` 从安全句式池中稳定选一句，避免单句模板重复。
 - **事前事实注入**：`build_location_context()` 仅用于未被 `safe_reply()` 覆盖但仍匹配地点事实的开放回复，约束模型不要编造不在事实中的建筑位置关系、交通方式和周边地标。
 - **后置验证**：模型回复后检测越界表达，触发重试或纠偏。
 - 发现碎片回复、越界回复后触发重试 → fallback。
@@ -405,14 +449,14 @@ SKILL.md
 - `location_query`：校园地点查询。`match_location_query()` 内部做了两项优化：
   - **多条目检测**：当多个地点条目同时命中且得分接近时返回 `None`，交给模型综合回答（避免”学生证和校园卡在哪”只答一个）。
   - **非地点追问词过滤**：消息含”带什么””证件””流程””材料”等追问词时不拦截，交给模型处理（避免”需要带什么证件”重复返回地址）。
-- `action_commitment`：用户已经决定下一步、准备去办事或自然收尾。`is_action_commitment()` 通过收尾标记词（”先去””先试””谢了””我先””找到之后””转转””逛逛”等）识别，非问句结尾时优先拦截，防止被地点关键词抢成 FAQ。走短句安全回应，避免模型编造景物或路线。
+- `action_commitment`：用户已经决定下一步、准备去办事或自然收尾。`is_action_commitment()` 通过收尾标记词（”先去””先试””谢了””我先””找到之后””转转””逛逛”等）识别，非问句结尾时优先拦截，防止被地点关键词抢成 FAQ。走多句式安全回应，避免模型编造景物或路线。
 - `open_chat`：普通聊天。
 
 ### 8.3 确定性安全回复（`safe_reply`）
 
-`safe_reply(user_msg)` 是事实型回复的主入口，在 `chat_core()`、`/api/chat` 和 `/api/selfplay/turn` 三条链路中均优先调用。它使用固定小芯句式拼接本地知识库事实，不调用 LLM，因此不能新增知识库里没有的银杏、钟楼、右手边路线、风景、人流或现场状态。覆盖：
+`safe_reply(user_msg)` 是事实型回复的主入口，在 `chat_core()`、`/api/chat` 和 `/api/selfplay/turn` 三条链路中均优先调用。它使用受控小芯句式池拼接本地知识库事实，不调用 LLM，因此不能新增知识库里没有的银杏、钟楼、右手边路线、风景、人流或现场状态。行动确认类短答由 `stable_variant()` 按用户原话稳定选择不同表达，在不牺牲事实边界的情况下减少固定模板感。覆盖：
 
-- **收尾/行动确认**（`action_commitment`）：”先去忙””下次聊””我先试试”等，用短句安全收束，不编造成景物或现场状态。
+- **收尾/行动确认**（`action_commitment`）：”先去忙””下次聊””我先试试”等，用多句式短答安全收束，不编造景物或现场状态。
 - **食堂位置**（`canteen_locations`）：列出 5 个餐饮点，提醒以校园地图或服务信息为准。
 - **食堂推荐**（`canteen_recommendation`）：只输出公开描述，不乱封”最好吃”。
 - **校园地点查询**（`location_query`）：命中 `campus_directory.json` 单条目时给出确定性短答；对成绩单打印和快递查询有专属模板。

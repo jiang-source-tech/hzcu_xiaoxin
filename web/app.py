@@ -35,6 +35,10 @@ SKILL_DIR = BASE_DIR / "skills" / "xiaoxin-senior"
 SKILL_FILE = SKILL_DIR / "SKILL.md"
 DATA_DIR = SKILL_DIR / "data"
 
+# 导入 tools/ 下的工具模块（直接 import，避免 subprocess 开销）
+sys.path.insert(0, str(SKILL_DIR / "tools"))
+import meta_manager
+
 # ─── DeepSeek 客户端 ────────────────────────────────────────────────────
 
 API_KEY = os.getenv("DEEPSEEK_API_KEY", "")
@@ -111,8 +115,13 @@ def build_system_prompt(
     relationship: dict | None = None,
     turn_analysis: dict | None = None,
 ) -> str:
-    """构建完整的 system prompt = SKILL.md + 记忆 + 成长 + 关系状态"""
+    """构建完整的 system prompt = SKILL.md + 记忆 + 成长 + 关系状态 + 用户画像 + 纠正"""
     parts = [load_skill_md()]
+
+    # 用户画像（meta.json）
+    profile = meta_manager.profile_prompt(DATA_DIR, user_id)
+    if profile:
+        parts.append(profile)
 
     # 记忆上下文
     mem = run_tool("memory_load", user_id)
@@ -126,6 +135,11 @@ def build_system_prompt(
 
     if relationship:
         parts.append("\n" + relationship_state.prompt_summary(relationship, turn_analysis))
+
+    # 用户纠正记录
+    corrections = meta_manager.corrections_prompt(DATA_DIR, user_id)
+    if corrections:
+        parts.append(corrections)
 
     parts.append(
         "\n记住：你是小芯，不是AI助手。用简短口语回复，每次2-4句话。"
@@ -284,7 +298,41 @@ def auto_save_memory(user_id: str, user_msg: str, reply: str):
                 mem_type = "name"
             print(f"[MEMORY] Detected {mem_type}: {user_msg[:40]}")
             run_tool("memory_save", user_id, content=user_msg[:80], type=mem_type)
+            # 同步更新 meta 用户画像
+            _sync_meta_profile(user_id, user_msg, mem_type)
             break
+
+
+def _sync_meta_profile(user_id: str, user_msg: str, mem_type: str):
+    """将检测到的用户信息同步到 meta.json 画像。"""
+    try:
+        if mem_type == "name":
+            # 从 "我叫小明" 中提取名字
+            m = re.search(r"(?:我叫|我的名字|喊我|就叫我)\s*(\S{1,8})", user_msg)
+            if m:
+                meta_manager.update_meta(DATA_DIR, user_id, "name", m.group(1))
+        elif mem_type == "major":
+            for major in ("电子信息工程", "自动化", "电子科学与技术", "人工智能",
+                          "电子信息", "电子科学", "通信工程"):
+                if major in user_msg:
+                    meta_manager.update_meta(DATA_DIR, user_id, "major", major)
+                    break
+        elif mem_type == "hometown":
+            m = re.search(r"(?:我来自|我家在)\s*(\S{2,10})", user_msg)
+            if m:
+                meta_manager.update_meta(DATA_DIR, user_id, "hometown", m.group(1))
+        elif mem_type == "interest":
+            # 提取兴趣爱好关键词
+            m = re.search(r"(?:我喜欢|我热爱|我对|感兴趣)\s*(\S{2,10})", user_msg)
+            if m:
+                interest = m.group(1)
+                meta = meta_manager.load_meta(DATA_DIR, user_id)
+                existing = meta.get("profile", {}).get("interests", [])
+                if interest not in existing:
+                    meta_manager.update_meta(DATA_DIR, user_id, "interests",
+                                             json.dumps(existing + [interest], ensure_ascii=False))
+    except Exception:
+        pass  # meta 同步失败不影响主流程
 
 
 # ─── 会话持久化 ──────────────────────────────────────────────────────────
@@ -432,6 +480,8 @@ def _ensure_session(user_id: str) -> str:
     active_conversations[user_id] = (sid, [])
     # 初始化成长档案（仅首次）
     run_tool("growth_init", user_id, year="大一")
+    # 初始化用户 meta（仅首次）
+    meta_manager.init_meta(DATA_DIR, user_id)
     return sid
 
 
@@ -470,6 +520,20 @@ def record_chat_reply(
     save_sessions(user_id, sessions)
 
     auto_save_memory(user_id, user_msg, clean_reply)
+
+    # 检测并记录用户纠正意图
+    if guard.is_correction_intent(user_msg):
+        try:
+            meta_manager.record_correction(DATA_DIR, user_id, user_msg[:120])
+            print(f"[CORRECTION] Recorded: {user_msg[:60]}")
+        except Exception:
+            pass
+
+    # 更新 meta 聊天计数
+    try:
+        meta_manager.increment_chats(DATA_DIR, user_id)
+    except Exception:
+        pass
 
     payload = {
         "reply": clean_reply,
@@ -823,6 +887,7 @@ def selfplay_turn():
     # 1. 小芯回复
     template_categories = {
         "admissions_guidance",
+        "action_commitment",
         "canteen_locations",
         "canteen_recommendation",
         "crisis",

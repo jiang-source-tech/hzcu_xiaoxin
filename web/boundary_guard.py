@@ -259,6 +259,21 @@ def is_action_commitment(text: str) -> bool:
     return not text.strip().endswith(("?", "？"))
 
 
+def is_correction_intent(text: str) -> bool:
+    """检测用户是否在纠正小芯（"不对""不是这样""你记错了"等）。
+
+    参考 yourself-skill/prompts/correction_handler.md 的纠正意图识别模式。
+    """
+    if not text:
+        return False
+    correction_markers = (
+        "不对", "不是这样", "不是这样的", "你记错了", "你记错了吧",
+        "应该是", "其实是", "我叫", "我的名字是", "我是",
+        "不，", "纠正一下", "说错了", "搞错了",
+    )
+    return contains_any(text, correction_markers)
+
+
 def classify_message(user_msg: str) -> str:
     text = user_msg or ""
 

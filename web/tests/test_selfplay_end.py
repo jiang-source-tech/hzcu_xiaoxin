@@ -414,6 +414,34 @@ class SelfplayEndTest(unittest.TestCase):
         self.assertEqual(len(fake_client.calls), 1)
         self.assertIn("高三考生", fake_client.calls[0]["messages"][0]["content"])
 
+    def test_selfplay_uses_action_commitment_safe_reply_before_xiaoxin_model_call(self):
+        fake_client = _FakeClient([
+            "城院秋天的银杏超美，图书馆钟楼远远能看见。[smile]",
+            "好，那我先去办事，晚点再聊。",
+        ])
+
+        with patch.object(app_module, "client", fake_client), \
+             patch.object(app_module, "build_system_prompt", return_value="你是小芯。"):
+            response = app_module.app.test_client().post(
+                "/api/selfplay/turn",
+                json={
+                    "persona": "小明",
+                    "message": "好的，那我去办事了，谢谢小芯！等办完有空了一定去逛逛。下次聊～",
+                    "turn": 0,
+                    "conversation": [
+                        {"role": "student", "content": "好的，那我去办事了，谢谢小芯！等办完有空了一定去逛逛。下次聊～"},
+                    ],
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertTrue(any(phrase in payload["xiaoxin"]["content"] for phrase in ("先去忙", "先处理", "先把手头事", "先办事", "处理正事", "办完")))
+        self.assertNotIn("银杏", payload["xiaoxin"]["content"])
+        self.assertNotIn("钟楼", payload["xiaoxin"]["content"])
+        self.assertEqual(len(fake_client.calls), 1)
+        self.assertIn("小明", fake_client.calls[0]["messages"][0]["content"])
+
     def test_chat_model_call_uses_configured_xiaoxin_token_budget_and_returns_speech(self):
         fake_client = _FakeClient([
             "这是一句完整回复。这里再补一句给语音播报。[smile]",
