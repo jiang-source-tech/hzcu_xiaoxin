@@ -52,7 +52,10 @@ class SkillBoundariesTest(unittest.TestCase):
     def test_express_answers_do_not_use_takeout_lockers_or_assume_dorm(self):
         self.assertIn("快递回答规则", self.skill)
         self.assertIn("外卖柜不是快递点", self.skill)
-        self.assertIn("不能按“宿舍楼下”判断", self.skill)
+        self.assertTrue(
+            "不能按“宿舍楼下”判断" in self.skill
+            or '不能按"宿舍楼下"判断' in self.skill
+        )
 
     def test_fact_errand_replies_do_not_invent_campus_scenery_or_routes(self):
         self.assertIn("事实型办事回复规则", self.skill)

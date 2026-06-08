@@ -262,6 +262,19 @@ class BoundaryGuardTest(unittest.TestCase):
         self.assertIn("以短信、取件码或快递平台通知为准", reply)
         self.assertNotIn("外卖柜", reply)
 
+    def test_specific_canteen_location_uses_specific_fact_not_general_overview(self):
+        reply = guard.safe_reply("北秀食堂具体在什么位置、几楼？")
+        self.assertIsNotNone(reply)
+        self.assertIn("北秀生活广场二楼", reply)
+        self.assertNotIn("北校区有北秀食堂，南校区有晨苑餐厅", reply)
+
+    def test_unknown_atm_location_does_not_claim_confirmed_fact(self):
+        reply = guard.safe_reply("校内有没有ATM或者银行，想去取点现金。")
+        self.assertIsNotNone(reply)
+        self.assertIn("没有可靠信息", reply)
+        self.assertNotIn("我查到的确定信息是", reply)
+        self.assertNotIn("很抱歉，这个问题我无法回复噢", reply)
+
     def test_express_reply_cannot_assume_dorm_or_use_takeout_locker(self):
         violations = guard.detect_reply_violations(
             "小信，咱们宿舍楼下的快递站是哪边去啊？我有个包裹到了。",
@@ -292,7 +305,7 @@ class BoundaryGuardTest(unittest.TestCase):
         self.assertIsNone(guard.template_reply(message))
         reply = guard.safe_reply(message)
         self.assertIsNotNone(reply)
-        self.assertIn("先去试试", reply)
+        self.assertTrue(any(phrase in reply for phrase in ("先去试试", "先试", "试一下", "按现场提示")))
         self.assertNotIn("银杏", reply)
         self.assertNotIn("钟楼", reply)
         self.assertNotIn("右手边", reply)
@@ -302,7 +315,7 @@ class BoundaryGuardTest(unittest.TestCase):
         self.assertEqual(guard.classify_message(message), "action_commitment")
         reply = guard.safe_reply(message)
         self.assertIsNotNone(reply)
-        self.assertIn("先去忙", reply)
+        self.assertTrue(any(phrase in reply for phrase in ("先去忙", "先处理", "先把手头事", "先办事", "处理正事", "办完")))
         self.assertNotIn("银杏", reply)
         self.assertNotIn("风景", reply)
         self.assertNotIn("超美", reply)
@@ -312,9 +325,24 @@ class BoundaryGuardTest(unittest.TestCase):
         self.assertEqual(guard.classify_message(message), "action_commitment")
         reply = guard.safe_reply(message)
         self.assertIsNotNone(reply)
-        self.assertIn("先去忙", reply)
+        self.assertTrue(any(phrase in reply for phrase in ("先去忙", "先处理", "先把手头事", "先办事", "处理正事", "办完")))
         self.assertNotIn("右手边", reply)
         self.assertNotIn("钟楼", reply)
+
+    def test_action_commitment_safe_replies_are_not_one_repeated_sentence(self):
+        messages = [
+            "好的，那我去办事了，谢谢小芯！等办完有空了一定去逛逛。下次聊～",
+            "那我先把材料打印完，晚点再来找你聊。",
+            "行，我先去跑一下流程，办完再说。",
+            "那我先去行政楼一楼试试那个终端，不行再看现场提示。",
+        ]
+        replies = [guard.safe_reply(message) for message in messages]
+        self.assertTrue(all(replies))
+        self.assertGreaterEqual(len(set(replies)), 3)
+        for reply in replies:
+            self.assertNotIn("银杏", reply)
+            self.assertNotIn("钟楼", reply)
+            self.assertNotIn("右手边", reply)
 
     def test_non_location_query_goes_to_llm(self):
         """普通聊天不应触发地点模板"""

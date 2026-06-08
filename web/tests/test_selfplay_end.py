@@ -279,7 +279,7 @@ class SelfplayEndTest(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         payload = response.get_json()
-        self.assertIn("先去试试", payload["reply"])
+        self.assertTrue(any(phrase in payload["reply"] for phrase in ("先去试试", "先试", "试一下", "按现场提示")))
         self.assertNotIn("信电学院教学办公室（教学办）位于", payload["reply"])
         self.assertNotIn("右手边", payload["reply"])
         self.assertNotIn("钟楼", payload["reply"])
@@ -302,7 +302,7 @@ class SelfplayEndTest(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         payload = response.get_json()
-        self.assertIn("先去忙", payload["reply"])
+        self.assertTrue(any(phrase in payload["reply"] for phrase in ("先去忙", "先处理", "先把手头事", "先办事", "处理正事", "办完")))
         self.assertNotIn("银杏", payload["reply"])
         self.assertNotIn("美景", payload["reply"])
         self.assertEqual(len(fake_client.calls), 0)
@@ -324,7 +324,7 @@ class SelfplayEndTest(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         payload = response.get_json()
-        self.assertIn("先去忙", payload["reply"])
+        self.assertTrue(any(phrase in payload["reply"] for phrase in ("先去忙", "先处理", "先把手头事", "先办事", "处理正事", "办完")))
         self.assertNotIn("右手边", payload["reply"])
         self.assertNotIn("钟楼", payload["reply"])
         self.assertEqual(len(fake_client.calls), 0)

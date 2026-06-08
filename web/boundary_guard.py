@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import re
+import zlib
 from functools import lru_cache
 from pathlib import Path
 
@@ -235,6 +236,14 @@ def contains_any(text: str, keywords: tuple[str, ...]) -> bool:
     return any(keyword in text for keyword in keywords)
 
 
+def stable_variant(text: str, variants: tuple[str, ...]) -> str:
+    """Pick a deterministic wording variant without relying on randomness."""
+    if not variants:
+        return ""
+    score = zlib.crc32((text or "").encode("utf-8"))
+    return variants[score % len(variants)]
+
+
 def is_action_commitment(text: str) -> bool:
     """用户已经在确认下一步/收尾时，不要被地点关键词抢成 FAQ。"""
     if not text:
@@ -243,6 +252,7 @@ def is_action_commitment(text: str) -> bool:
         "先去", "先试", "试试", "不行再", "不用了", "不去了",
         "算了", "谢了", "谢谢", "我先", "那我去", "那我先",
         "找到之后", "我再去", "再去", "转转", "逛逛",
+        "办完", "打印完", "晚点再来", "再来找", "跑一下流程",
     )
     if not contains_any(text, action_markers):
         return False
@@ -405,10 +415,23 @@ def safe_reply(user_msg: str) -> str | None:
 
     if category == "action_commitment":
         if contains_any(text, ("下次聊", "去办事", "去忙", "办完", "有空", "找到之后", "转转", "逛逛")):
-            return "嗯，先去忙吧。办完再来找我聊就行；别急，按你自己的节奏来。[wink]"
-        return "嗯，先去试试就行。真办不下来，再按现场提示或官方窗口确认；我这边不替现场情况打包票。[think]"
+            return stable_variant(text, (
+                "嗯，先去忙吧。办完再来找我聊就行；别急，按你自己的节奏来。[wink]",
+                "好，那你先处理正事。等空下来再找我，我陪你把后面的事慢慢理。[smile]",
+                "行，先把手头事办掉。拿不准就看现场提示，回来再聊也不迟。[think]",
+                "收到，先办事要紧。等你有空了再叫我，我们接着聊。[wave]",
+            ))
+        return stable_variant(text, (
+            "嗯，先去试试就行。真办不下来，再按现场提示或官方窗口确认；我这边不替现场情况打包票。[think]",
+            "可以，先试一下这个办法。要是现场不通，再换官方窗口确认，别来回硬跑。[think]",
+            "行，先按这个顺序试试。遇到卡住的地方，再把问题拿回来我帮你拆。[wink]",
+            "嗯，先试一轮。能办就省事，办不了也别急，按现场提示继续确认。[smile]",
+        ))
 
     if category == "canteen_locations":
+        specific_answer = match_location_query(text)
+        if specific_answer and contains_any(text, ("北秀", "晨苑", "学苑", "二食堂", "第二食堂", "石榴红")):
+            return f"这个点我查到的是：{specific_answer}。其他窗口、营业时间和实时情况我不乱说，以校园服务信息为准。[think]"
         locations = format_canteen_locations()
         return (
             f"食堂我能给你指个大方向：{locations}。具体几号楼几层、窗口和营业时间我不乱说，"
@@ -426,6 +449,8 @@ def safe_reply(user_msg: str) -> str | None:
         answer = match_location_query(text)
         if not answer:
             return None
+        if contains_any(answer, ("无法回复", "很抱歉", "没有可靠")):
+            return "这个我这里没有可靠信息，不能当成确定地点告诉你。最好看校园服务信息，或者问现场服务台/官方渠道确认。[think]"
         if contains_any(text, ("成绩单", "打印成绩", "打印终端", "自助打印", "CET", "GPA")):
             return (
                 "嗯，打印成绩类材料可以先看行政楼一楼自助终端。它能打印出国留学成绩单（中/英文）、"

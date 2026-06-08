@@ -7,11 +7,20 @@
 ```
 xiaoxin/
 ├── skills/xiaoxin-senior/     # 小芯数字人核心
-│   ├── SKILL.md               # 角色定义、心智模型、知识库、对话规则
-│   ├── prompts/
+│   ├── SKILL.md               # 角色定义（由 prompt_builder.py 从 prompts/ 组件自动生成）
+│   ├── prompts/               # Prompt 组件（按 Layer 0→5 分层）
+│   │   ├── hard_rules.md      # Layer 0: 硬规则
+│   │   ├── identity.md        # Layer 1: 身份锚定
+│   │   ├── speech_style.md    # Layer 2: 对话风格
+│   │   ├── mental_models.md   # Layer 3: 心智模型
+│   │   ├── knowledge_domains.md # Layer 4: 知识域
+│   │   ├── response_workflow.md # Layer 5: 回答工作流
+│   │   ├── example_dialogues.md # 附录: 示例对话
+│   │   ├── embedded_adaptation.md # 附录: 嵌入式设备适配
 │   │   ├── memory_protocol.md # 记忆协议
 │   │   └── growth_protocol.md # 成长协议
 │   ├── tools/
+│   │   ├── prompt_builder.py  # Prompt 组件组合工具
 │   │   ├── memory_manager.py  # 记忆引擎（艾宾浩斯遗忘曲线）
 │   │   └── growth_tracker.py  # 成长引擎（里程碑 + 阶段感知）
 │   └── data/                  # 运行时数据（不入库）

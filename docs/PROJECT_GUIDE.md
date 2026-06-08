@@ -23,11 +23,20 @@ hzcu_xiaoxin/
 │   └── ELECTRONIC_PET_NEXT_STAGE.md
 ├── skills/
 │   └── xiaoxin-senior/
-│       ├── SKILL.md
+│       ├── SKILL.md                     # 由 prompt_builder.py 从 prompts/ 组件自动生成
 │       ├── prompts/
-│       │   ├── growth_protocol.md
-│       │   └── memory_protocol.md
+│       │   ├── hard_rules.md            # Layer 0: 硬规则（角色扮演、价值观、反模式、诚实边界）
+│       │   ├── identity.md              # Layer 1: 身份锚定（使用说明、身份卡、诞生故事、成长系统）
+│       │   ├── speech_style.md          # Layer 2: 对话风格（语音交互、句式、口头禅、幽默）
+│       │   ├── mental_models.md         # Layer 3: 心智模型（5个模型）
+│       │   ├── knowledge_domains.md     # Layer 4: 知识域（学院/学校信息、校园生活、食堂/快递规则）
+│       │   ├── response_workflow.md     # Layer 5: 回答工作流（问题分类、回复组织、屏幕表情）
+│       │   ├── example_dialogues.md     # 附录: 示例对话（7个场景）
+│       │   ├── embedded_adaptation.md   # 附录: 嵌入式设备适配
+│       │   ├── memory_protocol.md       # 记忆协议（已有）
+│       │   └── growth_protocol.md       # 成长协议（已有）
 │       ├── tools/
+│       │   ├── prompt_builder.py        # Prompt 组件组合工具（--action combine/list）
 │       │   ├── growth_tracker.py
 │       │   └── memory_manager.py
 │       └── data/
@@ -349,8 +358,10 @@ SKILL.md
 
 修改建议：
 
-- 改小芯长期人格：改 `SKILL.md`，并补 `test_skill_boundaries.py`。
+- 改小芯长期人格：编辑 `prompts/` 下对应组件文件，运行 `python tools/prompt_builder.py --action combine` 重新生成 `SKILL.md`，并补 `test_skill_boundaries.py`。
 - 改某类高风险回答：优先改 `boundary_guard.py`。
+- `SKILL.md` 是生成产物（由 `prompt_builder.py` 从 `prompts/` 组件自动组合），不要手动编辑其主体内容。
+- 组件文件按 Layer 0→5→附录 排列：`hard_rules.md`（硬规则）→ `identity.md`（身份）→ `speech_style.md`（风格）→ `mental_models.md`（心智模型）→ `knowledge_domains.md`（知识域）→ `response_workflow.md`（工作流）→ `example_dialogues.md` + `embedded_adaptation.md`（附录）。
 - 改测试页模拟用户行为：改 `STUDENT_PERSONAS` 和 `personaOpenings`。
 
 ## 8. 边界防护设计
