@@ -28,6 +28,8 @@ COMPONENT_ORDER = [
     "speech_style.md",
     # Layer 3: 心智模型
     "mental_models.md",
+    # Layer 3.5: 关心协议（心智模型的行为规则）
+    "care_protocol.md",
     # Layer 4: 知识域
     "knowledge_domains.md",
     # Layer 5: 回答工作流

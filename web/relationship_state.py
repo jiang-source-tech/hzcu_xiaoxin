@@ -1,9 +1,13 @@
-"""Persistent relationship state for Xiaoxin's light companion loop."""
+"""Persistent relationship state for Xiaoxin's light companion loop.
+
+v2: adds followups system for tracking user concerns/decisions/events across conversations.
+"""
 
 from __future__ import annotations
 
 import copy
 import json
+import hashlib
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -26,6 +30,11 @@ CONTEXTUAL_GREETINGS = {
 
 GENERIC_GREETING = "今天想聊点什么？专业、校园生活，或者单纯放空一下都行。"
 
+_FOLLOWUP_KINDS = ("concern", "decision", "event")
+_FOLLOWUP_STATUSES = ("active", "resolved", "archived")
+_MAX_ACTIVE_FOLLOWUPS = 8
+_MAX_FOLLOWUP_AGE_DAYS = 60  # 超过 60 天自动 archive
+
 
 def default_state() -> dict[str, Any]:
     return {
@@ -36,6 +45,7 @@ def default_state() -> dict[str, Any]:
         "core_concern": "",
         "growth_intent": "",
         "next_hook": None,
+        "followups": [],
         "last_active_at": None,
         "last_greeting_date": None,
     }
@@ -56,6 +66,9 @@ def load_state(data_dir: Path, user_id: str) -> dict[str, Any]:
         return default_state()
     state = default_state()
     state.update(saved)
+    # migration: ensure followups field exists
+    if "followups" not in state:
+        state["followups"] = []
     return state
 
 
@@ -76,6 +89,7 @@ def public_state(state: dict[str, Any]) -> dict[str, Any]:
         "recent_mood": state.get("recent_mood", "unknown"),
         "recent_topic": state.get("recent_topic", "general_checkin"),
         "relationship_level": state.get("relationship_level", 1),
+        "active_followups": len([f for f in state.get("followups", []) if f.get("status") == "active"]),
     }
 
 
@@ -83,6 +97,179 @@ def companion_action(state: dict[str, Any], kind: str = "listen") -> dict[str, A
     mood = state.get("recent_mood", "unknown")
     intensity = 0.4 if mood in {"anxious", "frustrated", "lonely"} else 0.25
     return {"kind": kind, "intensity": intensity}
+
+
+# ─── Followups ──────────────────────────────────────────────────────────
+
+
+def _followup_id(label: str) -> str:
+    digest = hashlib.md5(label.encode()).hexdigest()[:8]
+    return f"fw_{digest}"
+
+
+def upsert_followup(
+    state: dict[str, Any],
+    kind: str,
+    label: str,
+    context: str = "",
+    intensity: str = "medium",
+    topic: str = "general_checkin",
+) -> dict[str, Any]:
+    """创建或更新一个 followup。相同 label 会自动去重合并。"""
+    now = datetime.now(timezone.utc).isoformat()
+    fid = _followup_id(label)
+    followups = state.get("followups", [])
+
+    # 查找已有的同 id followup
+    for fw in followups:
+        if fw.get("id") == fid:
+            fw["last_updated"] = now
+            fw["mention_count"] = fw.get("mention_count", 1) + 1
+            fw["context"] = context or fw.get("context", "")
+            fw["status"] = "active"  # re-activate if it was resolved
+            # 提升 intensity: low→medium→high
+            if intensity == "high" or fw.get("mention_count", 0) >= 3:
+                fw["intensity"] = "high"
+            elif intensity == "medium" or fw.get("mention_count", 0) >= 2:
+                fw["intensity"] = max(
+                    fw.get("intensity", "low"),
+                    intensity,
+                    key=lambda x: {"low": 0, "medium": 1, "high": 2}.get(x, 0),
+                )
+            state["followups"] = followups
+            return state
+
+    # 新建 followup
+    if kind not in _FOLLOWUP_KINDS:
+        kind = "concern"
+    new_fw = {
+        "id": fid,
+        "kind": kind,
+        "label": label,
+        "context": context,
+        "intensity": intensity,
+        "topic": topic,
+        "first_seen": now,
+        "last_updated": now,
+        "mention_count": 1,
+        "status": "active",
+    }
+    followups.append(new_fw)
+
+    # 限制数量：超过时移除最旧的 inactive
+    active_count = sum(1 for f in followups if f.get("status") == "active")
+    if active_count > _MAX_ACTIVE_FOLLOWUPS:
+        # archive oldest low-intensity followups
+        candidates = sorted(
+            [f for f in followups if f.get("status") == "active" and f.get("intensity") == "low"],
+            key=lambda f: f.get("last_updated", ""),
+        )
+        for c in candidates[: active_count - _MAX_ACTIVE_FOLLOWUPS]:
+            c["status"] = "archived"
+
+    state["followups"] = followups
+    return state
+
+
+def resolve_followup(state: dict[str, Any], label: str) -> dict[str, Any]:
+    """标记一个 followup 为已解决。"""
+    fid = _followup_id(label)
+    followups = state.get("followups", [])
+    for fw in followups:
+        if fw.get("id") == fid:
+            fw["status"] = "resolved"
+            fw["last_updated"] = datetime.now(timezone.utc).isoformat()
+            break
+    state["followups"] = followups
+    return state
+
+
+def _archive_stale_followups(state: dict[str, Any]):
+    """自动归档过期的 followups。"""
+    now = datetime.now(timezone.utc)
+    followups = state.get("followups", [])
+    for fw in followups:
+        if fw.get("status") != "active":
+            continue
+        last = fw.get("last_updated", fw.get("first_seen", ""))
+        try:
+            last_dt = datetime.fromisoformat(last)
+            if (now - last_dt).days > _MAX_FOLLOWUP_AGE_DAYS:
+                fw["status"] = "archived"
+        except (ValueError, TypeError):
+            pass
+    state["followups"] = followups
+
+
+def followups_prompt(state: dict[str, Any]) -> str:
+    """将活跃 followups 转换为关心的 prompt 片段。"""
+    _archive_stale_followups(state)
+    followups = state.get("followups", [])
+    active = [f for f in followups if f.get("status") == "active"]
+    if not active:
+        return ""
+
+    # 按 intensity 排序：high > medium > low
+    intensity_order = {"high": 0, "medium": 1, "low": 2}
+    active.sort(key=lambda f: intensity_order.get(f.get("intensity", "low"), 3))
+
+    lines = ["\n【关心的线索（轻触即走，不要沉重）】"]
+    for fw in active[:5]:  # 最多注入 5 条
+        label = fw.get("label", "")
+        context = fw.get("context", "")
+        kind = fw.get("kind", "concern")
+        intensity = fw.get("intensity", "medium")
+        count = fw.get("mention_count", 1)
+
+        if kind == "concern":
+            if intensity == "high" and count >= 3:
+                hint = f"用户多次提到{label}有困难，可以偶尔问一句进展"
+            else:
+                hint = f"用户提到过{label}的困难，相关话题时可以轻轻带一句"
+        elif kind == "decision":
+            hint = f"用户在选择{label}，聊到未来方向时可以问问想法有没有变化"
+        elif kind == "event":
+            hint = f"用户有{label}，时间过了可以问问结果"
+        else:
+            hint = f"可以偶尔关心一下{label}"
+
+        if context:
+            hint += f"（上下文：{context[:80]}）"
+        lines.append(f"- {hint}")
+
+    return "\n".join(lines)
+
+
+def _sync_next_hook_from_followups(state: dict[str, Any]):
+    """从 followups 中同步 next_hook（向后兼容）。
+
+    只在当前 hook 未显式失活时更新。如果 analysis 已经设置了
+    inactive 的 hook（例如用户拒绝了话题），则不覆盖。
+    """
+    existing = state.get("next_hook") or {}
+    # 尊重 analysis 层的显式失活
+    if isinstance(existing, dict) and existing.get("active") is False:
+        return
+
+    followups = state.get("followups", [])
+    active = [f for f in followups if f.get("status") == "active"]
+    if not active:
+        # 如果没有活跃 followup，保持之前的 hook 或设为 neutral
+        if not existing:
+            state["next_hook"] = {"topic": "general_checkin", "label": "近况", "active": False}
+        return
+
+    # 取最高 intensity 的
+    intensity_order = {"high": 3, "medium": 2, "low": 1}
+    top = max(active, key=lambda f: intensity_order.get(f.get("intensity", "low"), 0))
+    state["next_hook"] = {
+        "topic": top.get("topic", "general_checkin"),
+        "label": top.get("label", ""),
+        "active": True,
+    }
+
+
+# ─── Turn Update ────────────────────────────────────────────────────────
 
 
 def update_after_turn(
@@ -93,6 +280,8 @@ def update_after_turn(
     now = now or datetime.now(timezone.utc)
     updated = copy.deepcopy(default_state())
     updated.update(copy.deepcopy(state or {}))
+    if "followups" not in updated:
+        updated["followups"] = []
 
     stage_signal = analysis.get("stage_signal")
     if stage_signal in PRE_GROWTH_STAGE_MAP:
@@ -108,6 +297,7 @@ def update_after_turn(
         else:
             updated["growth_intent"] = analysis["memory_content"]
 
+    # ── Hook from analysis ──
     hook = analysis.get("next_hook")
     if hook:
         merged_hook = copy.deepcopy(hook)
@@ -117,7 +307,30 @@ def update_after_turn(
             merged_hook["last_mentioned"] = updated["next_hook"].get("last_mentioned")
         updated["next_hook"] = merged_hook
 
+    # ── Followups: upsert ──
+    followup_upsert = analysis.get("followup_upsert")
+    if followup_upsert:
+        upsert_followup(
+            updated,
+            kind=followup_upsert.get("kind", "concern"),
+            label=followup_upsert.get("label", ""),
+            context=followup_upsert.get("context", ""),
+            intensity=followup_upsert.get("intensity", "medium"),
+            topic=analysis.get("topic", "general_checkin"),
+        )
+
+    # ── Followups: resolve ──
+    followup_resolve = analysis.get("followup_resolve")
+    if followup_resolve:
+        resolve_followup(updated, followup_resolve)
+
+    # ── Sync next_hook ──
+    _sync_next_hook_from_followups(updated)
+
     return updated
+
+
+# ─── Prompt ─────────────────────────────────────────────────────────────
 
 
 def prompt_summary(state: dict[str, Any], analysis: dict[str, Any] | None = None) -> str:
@@ -130,14 +343,23 @@ def prompt_summary(state: dict[str, Any], analysis: dict[str, Any] | None = None
         f"- 用户阶段：{stage}",
         f"- 最近情绪：{mood}",
         f"- 最近主题：{topic}",
-        "- 接续旧线索时只轻轻提一句，不要说“我一直记得你”“我一直在想你”“我等你很久了”。",
+        '- 接续旧线索时只轻轻提一句，不要说"我一直记得你""我一直在想你""我等你很久了"。',
         "- 不要把短期情绪说成用户的长期性格标签。",
     ]
     if hook.get("active"):
-        lines.append(f"- 可轻接的话题：{hook.get('label', '')}。只说“你之前提过/聊到过”，不要表现得一直惦记。")
+        lines.append(f'- 可轻接的话题：{hook.get("label", "")}。只说"你之前提过/聊到过"，不要表现得一直惦记。')
     if analysis and analysis.get("reply_strategy"):
         lines.append(f"- 本轮策略：{analysis['reply_strategy']}")
+
+    # 关心线索
+    fw_prompt = followups_prompt(state)
+    if fw_prompt:
+        lines.append(fw_prompt)
+
     return "\n".join(lines)
+
+
+# ─── Greeting ───────────────────────────────────────────────────────────
 
 
 def _generic_payload() -> dict[str, Any]:
@@ -157,6 +379,41 @@ def greeting_payload(data_dir: Path, user_id: str, today: str | None = None) -> 
         return _generic_payload()
 
     state["last_greeting_date"] = today
+
+    # 优先用 followups 中的高 intensity 项生成问候
+    followups = state.get("followups", [])
+    active = [f for f in followups if f.get("status") == "active"]
+    intensity_order = {"high": 3, "medium": 2, "low": 1}
+    active.sort(key=lambda f: intensity_order.get(f.get("intensity", "low"), 0), reverse=True)
+
+    if active:
+        top = active[0]
+        topic = top.get("topic", "general_checkin")
+        label = top.get("label", "")
+        kind = top.get("kind", "concern")
+
+        # 尝试用 topic 映射找到预设问候
+        if topic in CONTEXTUAL_GREETINGS:
+            greeting = CONTEXTUAL_GREETINGS[topic]
+        elif kind == "concern":
+            greeting = f"之前你提过{label}，最近有新的进展吗？"
+        elif kind == "decision":
+            greeting = f"上次聊到{label}，最近想法有变化吗？"
+        elif kind == "event":
+            greeting = f"上次你说的{label}，后来怎么样了？"
+        else:
+            greeting = f"上次聊到{label}，今天想接着聊吗？还是换个话题？"
+
+        save_state(data_dir, user_id, state)
+        return {
+            "greeting": greeting,
+            "speech": greeting,
+            "expression": "soft_smile",
+            "kind": "contextual",
+            "companion_action": {"kind": "idle_wave", "intensity": 0.3},
+        }
+
+    # fallback: 用旧的 hook 逻辑
     hook = state.get("next_hook") or {}
     if hook.get("active") and hook.get("topic") in CONTEXTUAL_GREETINGS:
         greeting = CONTEXTUAL_GREETINGS[hook["topic"]]

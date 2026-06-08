@@ -270,5 +270,118 @@ class AppRelationshipTest(unittest.TestCase):
         self.assertEqual(second["kind"], "generic")
 
 
+class FollowupSystemTest(unittest.TestCase):
+    """关心系统 followups 功能测试"""
+
+    def setUp(self):
+        self.data_dir = Path(tempfile.mkdtemp(prefix="test_followups_"))
+        self.user_id = "test_followup_user"
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self.data_dir, ignore_errors=True)
+
+    def test_concern_creates_followup(self):
+        """用户表达课程焦虑 → 创建 concern followup"""
+        state = relationship_state.default_state()
+        analysis = turn_analyzer.analyze("信电会不会很难，我怕跟不上。", state)
+        state = relationship_state.update_after_turn(state, analysis)
+
+        followups = state.get("followups", [])
+        self.assertGreater(len(followups), 0)
+        self.assertEqual(followups[0]["kind"], "concern")
+        self.assertEqual(followups[0]["status"], "active")
+
+    def test_repeated_concern_increases_intensity(self):
+        """多次提到同一问题 → mention_count 增加"""
+        state = relationship_state.default_state()
+
+        # 使用相似措辞确保匹配到同一个 label
+        for msg in ["C语言好难，指针搞不懂", "C语言的指针还是不会", "C语言太难了"]:
+            analysis = turn_analyzer.analyze(msg, state)
+            state = relationship_state.update_after_turn(state, analysis)
+
+        followups = state.get("followups", [])
+        self.assertGreater(len(followups), 0, "应至少创建一个 followup")
+        mention_counts = [f.get("mention_count", 0) for f in followups]
+        self.assertGreaterEqual(max(mention_counts), 2, "重复提到应增加 mention_count")
+
+    def test_refusal_deactivates_hook(self):
+        """用户说聊点别的 → next_hook 应失活"""
+        state = relationship_state.default_state()
+
+        # 先创建一个 active hook
+        analysis = turn_analyzer.analyze("信电会不会很难，我怕跟不上。", state)
+        state = relationship_state.update_after_turn(state, analysis)
+        self.assertTrue(state["next_hook"].get("active"))
+
+        # 用户拒绝
+        analysis2 = turn_analyzer.analyze("聊点别的吧，累了", state)
+        state = relationship_state.update_after_turn(state, analysis2)
+        self.assertFalse(state["next_hook"].get("active"),
+                         "用户说聊点别的后 hook 应失活")
+
+    def test_followups_survive_save_load_cycle(self):
+        """followups 在 save/load 后保持"""
+        state = relationship_state.default_state()
+        analysis = turn_analyzer.analyze("信电会不会很难，我怕跟不上。", state)
+        state = relationship_state.update_after_turn(state, analysis)
+
+        relationship_state.save_state(self.data_dir, self.user_id, state)
+        loaded = relationship_state.load_state(self.data_dir, self.user_id)
+
+        self.assertEqual(
+            len(loaded.get("followups", [])),
+            len(state.get("followups", [])),
+        )
+
+    def test_followups_prompt_includes_active_items(self):
+        """活跃 followups 应出现在 prompt 中"""
+        state = relationship_state.default_state()
+        analysis = turn_analyzer.analyze("C语言好难，指针完全搞不懂", state)
+        state = relationship_state.update_after_turn(state, analysis)
+
+        prompt = relationship_state.followups_prompt(state)
+        self.assertIn("关心的线索", prompt)
+        # label 中应包含 C语言 或 指针
+        self.assertTrue("C语言" in prompt or "指针" in prompt or "C语言学习" in prompt,
+                        f"prompt should contain followup label, got: {prompt[:200]}")
+
+    def test_decision_detection(self):
+        """纠结考研应创建 decision followup"""
+        state = relationship_state.default_state()
+        analysis = turn_analyzer.analyze("我在纠结要不要考研", state)
+        state = relationship_state.update_after_turn(state, analysis)
+
+        followups = state.get("followups", [])
+        decisions = [f for f in followups if f["kind"] == "decision"]
+        self.assertGreater(len(decisions), 0)
+
+    def test_no_followup_for_neutral_chat(self):
+        """普通聊天不应创建 followup"""
+        state = relationship_state.default_state()
+        analysis = turn_analyzer.analyze("嗯，我知道了，谢谢你小芯", state)
+        state = relationship_state.update_after_turn(state, analysis)
+
+        # 不应新增 followup
+        self.assertEqual(
+            len(state.get("followups", [])), 0,
+            "普通聊天不应创建 followup"
+        )
+
+    def test_greeting_uses_followup(self):
+        """问候应引用活跃 followup"""
+        state = relationship_state.default_state()
+        analysis = turn_analyzer.analyze("信电会不会很难，我怕跟不上。", state)
+        state = relationship_state.update_after_turn(state, analysis)
+        relationship_state.save_state(self.data_dir, self.user_id, state)
+
+        payload = relationship_state.greeting_payload(
+            self.data_dir, self.user_id, today="2026-06-08"
+        )
+        self.assertEqual(payload["kind"], "contextual")
+        self.assertIn("课程", payload["greeting"])
+
+
 if __name__ == "__main__":
     unittest.main()
