@@ -134,23 +134,25 @@ python tests/test_relationship_v2.py --mode pressure --turns-per-day 5
 
 ## 边界防护
 
-小芯有多层边界防护确保回复安全可控：
+小芯采用**后置验证**架构：模型始终先自由回复，guard 在回复后检测违规并触发重试/纠偏。
+这样模型能感知对话上下文、共情用户情绪，而 guard 只做事实核查和安全兜底。
 
 | 层级 | 文件 | 职责 |
 |------|------|------|
 | 事前 | `SKILL.md` | 人格定义中明确反编造规则 |
 | 事前 | `app.py` `build_system_prompt()` | System prompt 尾部追加 ⚠️ 禁编造约束 |
-| 事中 | `boundary_guard.py` | 模板回复 + 违规检测 + 地点查询匹配 + 自动重试 |
+| 事后 | `boundary_guard.py` | 后置验证：违规检测 + 地点核查 + 自动重试 → 兜底回复 + TTS 裁剪 |
 | 事后 | `rule_evaluator.py` | 场景探针检查 + forbidden phrases |
 
 违规检测覆盖：编造具体人物/竞赛/引语、承诺私人联系/代办、虚构真实经历、编造餐饮细节、报考预测、假设线下在场等。
 
 ### 地点查询（campus_directory）
 
-`boundary_guard.py` 加载 `knowledge/campus_directory.json`，通过关键词匹配提供确定性地点回复：
-- 学生问"学工办在哪"→ 直接返回"理五B307"，不走 LLM
+`boundary_guard.py` 加载 `knowledge/campus_directory.json` 作为事实基准：
+- 后置验证：模型回复后，guard 检查回复中的地点/电话是否编造
 - 覆盖 23 个校园地点：学院办公室、行政楼、医务室、心理咨询、食堂、快递、超市等
-- 同义词支持：如"校医院"→ 匹配"校医务室"
+- 单条目明确命中时直接返回确定性短答
+- 多条目同时命中（如"学生证和校园卡在哪"）或含有非地点追问词（如"需要带什么证件"）时，交给模型综合回答
 - 未覆盖地点自动走 LLM 或引导咨询辅导员
 
 ## 核心理念

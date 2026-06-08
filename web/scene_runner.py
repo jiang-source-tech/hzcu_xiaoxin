@@ -699,12 +699,12 @@ def run_scene_streaming(
         import app as app_module
 
         if chat_fn is None:
-            def chat_fn(uid, msg, dd):
+            def chat_fn(uid, msg, dd, history=None):
                 old = app_module.DATA_DIR
                 app_module.DATA_DIR = Path(dd)
                 app_module.active_conversations.clear()
                 try:
-                    return app_module.chat_core(uid, msg, dd)
+                    return app_module.chat_core(uid, msg, dd, history=history)
                 finally:
                     app_module.DATA_DIR = old
 
@@ -841,7 +841,15 @@ def run_scene_streaming(
                     relationship_before = relationship_state.load_state(data_dir, user_id)
                     memories_before = load_long_term_memories(data_dir, user_id)
 
-                    payload = chat_fn(user_id, user_msg, str(data_dir))
+                    # 构建同日对话历史，让模型能理解追问上下文
+                    same_day_history = []
+                    for r in same_day_records:
+                        if r.get("user_message"):
+                            same_day_history.append({"role": "user", "content": r["user_message"]})
+                        if r.get("xiaoxin_reply"):
+                            same_day_history.append({"role": "assistant", "content": r["xiaoxin_reply"]})
+
+                    payload = chat_fn(user_id, user_msg, str(data_dir), history=same_day_history)
                     state = relationship_state.load_state(data_dir, user_id)
                     next_hook = state.get("next_hook") or {}
                     reply_text = str(payload.get("reply") or payload.get("greeting") or "")

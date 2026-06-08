@@ -77,7 +77,7 @@ hzcu_xiaoxin/
 - `web/app.py`：Flask 后端、LLM 调用、会话持久化、自对话测试接口。
 - `web/boundary_guard.py`：确定性边界防护、模板回复、违规检测、TTS 文本裁剪。
 - `web/relationship_state.py`：关系闭环状态、阶段、next hook 和每日问候策略。
-- `web/scene_runner.py`：关系闭环 v2 场景执行器，驱动用户模拟 LLM、小芯管线和质量裁判。
+- `web/scene_runner.py`：关系闭环 v2 场景执行器，驱动用户模拟 LLM、小芯管线、状态记录和记忆审计。
 - `web/static/index.html`：正常聊天页面。
 - `web/static/test.html`：可视化 AI 自对话测试页面。
 - `web/static/relationship-v2-test.html`：关系闭环测试页面；访问入口是 `/relationship-test`。
@@ -130,25 +130,29 @@ python app.py
 
 ## 4. 正常聊天链路
 
-正常用户聊天走 `/api/chat`。
+正常用户聊天走 `/api/chat`，v2 场景测试走 `chat_core()`。两者均采用**后置验证**架构。
 
 核心流程：
 
 ```text
 浏览器 index.html
   -> POST /api/chat
-  -> guard.template_reply(user_msg)
-       如果命中高风险模板，直接返回模板回复
   -> build_system_prompt(user_id)
-       SKILL.md + 记忆 + 成长快照 + 简短口语规则
+       SKILL.md + 记忆 + 成长快照 + 关系状态 + 简短口语规则
   -> DeepSeek chat.completions.create()
-  -> 检查截断/碎片/越界
-       必要时重试
-       仍越界则 fallback
+       （始终调用模型，不在模型前拦截）
+  -> 后置验证
+       截断/碎片检查 → 重试
+       越界检测（编造人物/地点/竞赛/餐饮/联系方式等）→ 重试
+       仍不通过则 guard.fallback_reply()
   -> record_chat_reply()
        保存会话、解析表情、生成 speech、自动保存记忆
   -> 返回 JSON
 ```
+
+> **架构变更（2026-06）**：guard 从"前置拦截"改为"后置验证"。之前 `template_reply()` 在调用模型前拦截命中关键词的消息，直接返回模板回复——导致回复像查询机器、丢失对话上下文、多事物问句只答一个。现在模型始终首发回复，guard 只做事实核查和安全兜底。
+
+`chat_core()`（v2 场景测试用）额外支持 `history` 参数，传入同日对话历史让模型能理解追问上下文。
 
 返回结构大致为：
 
@@ -178,13 +182,14 @@ python app.py
 - `/test` 固定使用 `user_id="selfplay"`，因此记忆上下文可能不同。
 - `/test` 额外多了一个“模拟用户模型”，由 `STUDENT_PERSONAS` 和前端开场白驱动。
 
-`/api/selfplay/turn` 一轮包含两步：
+`/api/selfplay/turn` 一轮包含两步（与主链路一致，均采用后置验证）：
 
 ```text
 1. 小芯回复
    build_system_prompt("selfplay")
    + 当前对话记录
    + 用户本轮发言
+   -> 后置验证（碎片检测/越界检测/重试/兜底）
 
 2. 模拟用户回复
    STUDENT_PERSONAS[persona]
@@ -214,15 +219,14 @@ python app.py
 
 `/relationship-test` 用于审核“同一个用户跨天回来时，小芯是否形成健康、克制、可控的关系连续性”。它和 `/test` 的区别是：`/test` 看一段自由自对话，`/relationship-test` 看一个用户周期里的状态迁移、每日问候、hook 接续和边界表现。
 
-当前实现是 v2 三 LLM 闭环：
+当前实现是 v2 双 LLM 回放链路，页面以人工审核为主：
 
 ```text
 场景 JSON
   -> 用户模拟 LLM 生成自然用户消息
   -> 小芯真实管线处理 /api/chat 或 /api/greeting
-  -> 规则评估器检查状态、边界、内容探针
-  -> 质量裁判 LLM 对完整时间线评分
-  -> Web 页面按天回放用户 LLM / 小芯 LLM 的详细对话
+  -> 后端记录状态迁移、边界检测结果和记忆审计快照
+  -> Web 页面按天回放用户 LLM / 小芯 LLM 的详细对话，供人工审核
 ```
 
 ### 场景剧本 day 随机化
@@ -269,21 +273,21 @@ python app.py
 - `web/relationship_state.py`：保存 `user_stage`、`recent_topic`、`next_hook`、问候日期等关系状态。
 - `web/rule_evaluator.py`：检查 forbidden phrases、状态探针、内容探针和问候类型。
 - `web/quality_judge.py`：质量裁判 LLM，输出接续自然度、分寸感、情绪承接、阶段感知、边界安全评分。
-- `web/scene_runner.py`：串联场景执行、状态读取、规则评估、质量裁判和 SSE 事件。
+- `web/scene_runner.py`：串联场景执行、状态读取、记忆审计、规则评估和 SSE 事件。规则评估结果保留在后端数据中，但 `/relationship-test` 页面不再展示系统判定。
 - `web/static/relationship-v2-test.html`：每日 LLM 对话回放页面。
 
 页面当前展示：
 
-- 每个场景的 PASS / WARN / FAIL 摘要。
 - 每天的用户 LLM 消息和小芯 LLM 回复。
 - 每轮后的阶段、主题、hook、表情、动作状态条。
-- 每轮的记忆审计面板：展示 relationship 关系状态记忆、长期 memory 写入事件、当前长期 memory 列表和审计旗标。
-- 违规项的可读解释，例如“期望阶段 prospective，实际阶段 pre_enrollment”。
-- 质量裁判评分和综合评语。
+- 每轮的记忆审计面板：展示 relationship 关系状态记忆、长期 memory 写入事件和当前长期 memory 列表。
+- 最后一轮 chat 后的人工审核区：展示场景意图和人工勾选项。
+
+页面不展示系统 PASS / WARN / FAIL、规则违规红条或质量裁判评分；这些自动判断容易误伤真实对话，只作为后端调试数据保留。
 
 ### 记忆审计字段
 
-`web/scene_runner.py` 会为每个 chat episode 附加 `memory_audit`，用于判断小芯的记忆功能是否符合预期。它不是新的持久化数据，而是测试运行时从临时 `relationship_{user_id}.json` 和 `memory_{user_id}.json` 中抽取的审计快照。
+`web/scene_runner.py` 会为每个 chat episode 附加 `memory_audit`，用于给人工审核提供记忆事实快照。它不是新的持久化数据，而是测试运行时从临时 `relationship_{user_id}.json` 和 `memory_{user_id}.json` 中抽取的审计快照。
 
 `memory_audit` 结构：
 
@@ -306,7 +310,7 @@ python app.py
 - `relationship_changes`：关系状态中发生变化的字段，方便看小芯是否把“担心课程”“竞赛兴趣”等线索写入关系状态。
 - `long_term_memories`：当前 `memory_{user_id}.json` 中的长期记忆摘要，包含 `content`、`type`、`importance`、`strength`、`status`。
 - `memory_events`：本轮新增、更新或删除的长期记忆事件。
-- `audit_flags`：页面可直接展示的审计提示，例如“关系记忆已更新”“长期记忆正确跳过”“本轮不应写长期记忆但 memory 文件发生变化”。
+- `audit_flags`：后端调试用审计提示，例如“关系记忆已更新”“长期记忆正确跳过”“本轮不应写长期记忆但 memory 文件发生变化”。`/relationship-test` 页面不展示该字段。
 
 审计口径：
 
@@ -317,8 +321,8 @@ python app.py
 
 注意事项：
 
-- 跑 Web 测试需要 `DEEPSEEK_API_KEY`，除非勾选“跳过质量裁判”只能省掉裁判 LLM，用户模拟和小芯真实管线仍依赖模型调用。
-- `pre_enrollment` 是合法阶段，含义是“准备入学”；如果测试期望与实际阶段不一致，页面会在对应 day 下显示阶段错误。
+- 跑 Web 测试需要 `DEEPSEEK_API_KEY`，用户模拟和小芯真实管线仍依赖模型调用。页面默认跳过质量裁判 LLM，不展示系统评分。
+- `pre_enrollment` 是合法阶段，含义是“准备入学”；如果测试期望与实际阶段不一致，应由人工结合对话内容和状态条判断。
 - `/relationship-v2-test` 不是访问入口，访问会返回 404。
 
 ## 7. System Prompt 组成
@@ -352,43 +356,32 @@ SKILL.md
 
 - 清理模型泄露的推理标记。
 - 将带表情的回复转为适合 TTS 的短文本。
-- 对高风险用户问题直接返回模板。
-- 检测模型回复里的越界表达。
-- 发现碎片回复、越界回复后触发重试或 fallback。
+- **后置验证**：模型回复后检测越界表达，触发重试或纠偏。
+- **事实核查**：对比 `campus_directory.json` 验证模型回复中的地点/电话是否准确。
+- 发现碎片回复、越界回复后触发重试 → fallback。
+
+> **架构要点**：guard 不再在模型前拦截。`template_reply()` 和 `classify_message()` 仍然存在并维护，但仅在以下场景使用：(1) 模型多次重试仍越界时的 `fallback_reply()` 兜底；(2) 重试时通过 `classify_message()` 生成针对性的 `retry_instruction()`。
 
 ### 8.1 用户问题分类
 
-`classify_message(user_msg)` 会把用户问题分为：
+`classify_message(user_msg)` 用于后置验证阶段（重试纠偏指令生成），把用户问题分为：
 
-- `crisis`：危机场景，如“不想活”“撑不住”。
+- `crisis`：危机场景，如”不想活””撑不住”。
 - `admissions_guidance`：高三报考、志愿、录取概率、专业适合度。
-- `private_records`：成绩、绩点、查分。
+- `private_records`：成绩、绩点、查分（”成绩单打印/办理”不在此列，避免误拦）。
 - `official_process`：缴费、选课、退课、宿舍调整、停水停电等。
-- `delivery`：快递、驿站、取件点。
-- `clothing_guidance`：穿衣、天气、带伞、军训携带物等。
-- `dorm_life`：宿舍、床位、独卫、空调、热水器等。
-- `transportation`：到校路线、公交、地铁、杭州东站、学校地址等。
 - `official_contact`：实验中心、学院、老师、辅导员等联系方式。
 - `competition_resources`：竞赛资源、源文件、队长、学长联系方式。
 - `canteen_locations`：食堂位置概览。
 - `canteen_recommendation`：食堂推荐、价格、窗口、营业时间等。
-- `location_query`：校园地点查询（学工办、医务室、快递点等），命中 `campus_directory.json` 后直接返回确定性短答。
-- `open_chat`：普通聊天，不走模板。
+- `location_query`：校园地点查询。`match_location_query()` 内部做了两项优化：
+  - **多条目检测**：当多个地点条目同时命中且得分接近时返回 `None`，交给模型综合回答（避免”学生证和校园卡在哪”只答一个）。
+  - **非地点追问词过滤**：消息含”带什么””证件””流程””材料”等追问词时不拦截，交给模型处理（避免”需要带什么证件”重复返回地址）。
+- `open_chat`：普通聊天。
 
-### 8.2 模板回复
+### 8.2 兜底回复
 
-`template_reply(user_msg)` 对高风险问题直接返回固定回复，避免模型自由发挥。
-
-例如：
-
-- 危机场景：小芯不能只做普通陪聊，要提示马上联系同学、辅导员、家人或现实支持渠道。
-- 报考咨询：不能预测录取概率，不能保证“稳了”，不能直接替用户选志愿或专业。
-- 成绩查询：小芯查不了，必须以教务系统或老师正式通知为准。
-- 官方流程：小芯不能替正式通知说准，只能建议看学校/学院通知或教务系统。
-- 联系方式：小芯没有可靠联系方式，不能替用户去问，也不能编。
-- 竞赛资源：不能承诺给源文件、联系方式、往届资料。
-- 食堂细节：只能说知识库里的公开信息，不编窗口、价格、营业时间。
-- 宿舍、交通、快递、穿衣：可以基于结构化知识给大方向，但不能声称知道实时天气、实时路况、实时投递点、具体床位分配。
+`template_reply(user_msg)` 和 `fallback_reply(user_msg)` 在模型多次重试仍越界时使用，作为最后的安全网。覆盖场景包括危机引导、成绩查询拒绝、官方流程指引、联系方式拒绝、竞赛资源边界、报考预测拒绝、食堂细节边界等。正常情况下模型首发回复即可，这些模板只在异常时触发。
 
 ### 8.3 回复违规检测
 
@@ -448,7 +441,8 @@ SKILL.md
 
 默认保存触发：
 
-- 名字、专业、家乡、目标、兴趣等。
+- 名字（"我叫小明"）——已排除"我是外地生""我是大一新生"等身份描述。
+- 专业、家乡、目标、兴趣等。
 - 明确的人生规划或学习目标。
 - 重要成就和里程碑。
 
@@ -522,7 +516,7 @@ SKILL.md
 - 调用 `/api/v2/relationship-selfplay/run`，用流式事件展示测试进度。
 - 按 day 展示用户模拟 LLM 和小芯 LLM 的完整对话。
 - 展示每轮后的 `user_stage`、`recent_topic`、`next_hook`、表情和动作。
-- 展示规则违规项和质量裁判评分。
+- 展示每轮记忆审计面板，并提供人工审核区；不展示系统规则判定和质量裁判评分。
 
 注意：
 
@@ -580,9 +574,11 @@ python -m pytest web\tests -q
 流程：
 
 1. 在 `test_boundary_guard.py` 写一个失败测试。
-2. 在 `classify_message()` 或 `detect_reply_violations()` 中补规则。
-3. 在 `template_reply()` 或 `retry_instruction()` 中补模板/重试提示。
-4. 运行 `python -m unittest discover -s web\tests`。
+2. 在 `classify_message()` 或 `detect_reply_violations()` 中补检测规则。
+3. 在 `retry_instruction()` 中补针对性纠偏提示，必要时补 `fallback_reply()` 兜底。
+4. 运行 `python -m pytest web/tests -q`。
+
+> 注意：`template_reply()` 仅作为 fallback 使用，正常流程中模型首发回复、guard 后置验证。
 
 示例边界：
 
@@ -624,7 +620,9 @@ python -m unittest web.tests.test_selfplay_openings
 
 低耦合做得较好的部分：
 
-- 小芯边界防护集中在 `boundary_guard.py`（含编造人物/竞赛/引语检测）。
+- 小芯边界防护集中在 `boundary_guard.py`（含编造人物/竞赛/引语检测、地点事实核查）。
+- guard 从前置拦截改为后置验证后，模型回复质量大幅提升；`template_reply` 仅作为 fallback 安全网。
+- `chat_core()` 支持可选 `history` 参数，v2 场景测试可传入同日对话历史，让模型理解追问上下文。
 - 关系闭环各组件职责分离：`scene_runner.py`（编排）、`user_simulator.py`（模拟）、`rule_evaluator.py`（规则）、`quality_judge.py`（裁判）。
 - Flask 路由通过 guard 函数调用边界层，依赖方向清晰。
 - 小芯主 prompt 统一由 `build_system_prompt()` 构建，正常聊天和 `/test` 复用同一逻辑。

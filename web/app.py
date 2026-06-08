@@ -260,15 +260,28 @@ def auto_save_memory(user_id: str, user_msg: str, reply: str):
         return
 
     triggers = [
-        (["我是", "我叫", "我的名字", "喊我", "就叫我"], "name"),
+        # name: 检测真实名字，排除「我是外地生/新生/大一的」这类身份描述
+        (["我叫", "我的名字", "喊我", "就叫我"], "name"),
+        (["我是"], "name_check"),   # 需额外验证后面跟的是名字而非描述
         (["专业", "电子信息", "自动化", "人工智能", "电子科学", "通信"], "major"),
         (["我来自", "我家在", "我是.*人"], "hometown"),
         (["我喜欢", "我热爱", "我对.*感兴趣"], "interest"),
         (["考研", "保研", "出国", "考公", "找工"], "goal"),
     ]
 
+    # 「我是 X」中 X 是描述词而非名字的模式
+    _not_a_name_after_wo_shi = re.compile(
+        r"我是(外地|本地|外省|本省|大一|大二|大三|大四|新生|老生|留学生|交换生|插班生|转专业|应届|往届|"
+        r"信电|计算机|商|法学|医学|艺术|理学|工学|农学|教育|管理|经济|文法|"
+        r"一个|那个|来|去|想|要|不|很|比较|有点)"
+    )
+
     for keywords, mem_type in triggers:
         if any(re.search(kw, user_msg) for kw in keywords):
+            if mem_type == "name_check":
+                if _not_a_name_after_wo_shi.search(user_msg):
+                    continue  # 不是名字，是身份描述，跳过
+                mem_type = "name"
             print(f"[MEMORY] Detected {mem_type}: {user_msg[:40]}")
             run_tool("memory_save", user_id, content=user_msg[:80], type=mem_type)
             break
@@ -279,10 +292,11 @@ def auto_save_memory(user_id: str, user_msg: str, reply: str):
 # ─── 内部核心函数（供路由和 v2 测试共用）─────────────────────────────
 
 
-def chat_core(user_id: str, user_msg: str, data_dir: str | None = None) -> dict:
+def chat_core(user_id: str, user_msg: str, data_dir: str | None = None, history: list[dict] | None = None) -> dict:
     """核心聊天管线：加载状态 → 分析 → 调用 DeepSeek → 保存状态 → 返回 payload。
 
     供 /api/chat 路由和 scene_runner v2 流式测试共用。
+    history: 可选的对话历史，格式 [{"role": "user"|"assistant", "content": "..."}, ...]
     """
     data_path = Path(data_dir) if data_dir else DATA_DIR
 
@@ -290,28 +304,17 @@ def chat_core(user_id: str, user_msg: str, data_dir: str | None = None) -> dict:
     relationship = relationship_state.load_state(data_path, user_id)
     turn_analysis = turn_analyzer.analyze(user_msg, relationship)
 
-    # 边界兜底
-    guarded_reply = guard.template_reply(user_msg)
-    if guarded_reply:
-        relationship = relationship_state.update_after_turn(relationship, turn_analysis)
-        relationship_state.save_state(data_path, user_id, relationship)
-        clean, expression = parse_expression(guarded_reply)
-        return {
-            "reply": clean,
-            "speech": guard.to_speech_text(clean),
-            "expression": expression,
-            "kind": "template",
-            "state": relationship_state.public_state(relationship),
-            "next_hook": relationship.get("next_hook"),
-            "companion_action": relationship_state.companion_action(relationship),
-        }
-
-    # 构建 system prompt（无历史记录 —— v2 场景测试不持久化会话）
+    # 构建 system prompt + 对话历史
     system_prompt = build_system_prompt(user_id, relationship, turn_analysis)
-    messages = [
-        {"role": "system", "content": system_prompt},
-        {"role": "user", "content": user_msg},
-    ]
+    messages = [{"role": "system", "content": system_prompt}]
+    # 注入最近 6 条历史（同一天内的上下文），让模型能理解追问
+    if history:
+        for h in history[-6:]:
+            role = h.get("role", "")
+            content = str(h.get("content", "")).strip()
+            if role in ("user", "assistant") and content:
+                messages.append({"role": role, "content": content})
+    messages.append({"role": "user", "content": user_msg})
 
     # 调用 DeepSeek API
     try:
@@ -497,23 +500,6 @@ def chat():
     _, history = active_conversations[user_id]
     relationship = relationship_state.load_state(DATA_DIR, user_id)
     turn_analysis = turn_analyzer.analyze(user_msg, relationship)
-
-    guarded_reply = guard.template_reply(user_msg)
-    if guarded_reply:
-        relationship = relationship_state.update_after_turn(relationship, turn_analysis)
-        relationship_state.save_state(DATA_DIR, user_id, relationship)
-        payload = record_chat_reply(
-            user_id,
-            sid,
-            history,
-            user_msg,
-            guarded_reply,
-            relationship=relationship,
-            next_hook=relationship.get("next_hook"),
-            companion_action=relationship_state.companion_action(relationship),
-        )
-        print(f"[小芯/guard] > {payload['reply']}")
-        return jsonify(payload)
 
     # 构建 system prompt
     system_prompt = build_system_prompt(user_id, relationship, turn_analysis)
@@ -802,30 +788,29 @@ def selfplay_turn():
         {"role": "system", "content": xiaoxin_sp},
         *build_selfplay_messages(conversation, user_msg),
     ]
-    xiaoxin_reply = guard.template_reply(user_msg)
-    if not xiaoxin_reply:
-        try:
+    xiaoxin_reply = None
+    try:
+        xr = client.chat.completions.create(
+            model=MODEL, messages=xiaoxin_messages, temperature=0.8, max_tokens=XIAOXIN_MAX_TOKENS)
+        xiaoxin_reply = xr.choices[0].message.content.strip()
+        if response_was_truncated(xr) or is_fragmented_xiaoxin_reply(xiaoxin_reply):
+            retry_messages = [
+                *xiaoxin_messages,
+                {"role": "system", "content": "上一条回复不完整，请重新用小芯的口吻完整回答。输出2-4句，可以带一个表情标记。"},
+            ]
             xr = client.chat.completions.create(
-                model=MODEL, messages=xiaoxin_messages, temperature=0.8, max_tokens=XIAOXIN_MAX_TOKENS)
+                model=MODEL, messages=retry_messages, temperature=0.6, max_tokens=XIAOXIN_MAX_TOKENS)
             xiaoxin_reply = xr.choices[0].message.content.strip()
-            if response_was_truncated(xr) or is_fragmented_xiaoxin_reply(xiaoxin_reply):
-                retry_messages = [
-                    *xiaoxin_messages,
-                    {"role": "system", "content": "上一条回复不完整，请重新用小芯的口吻完整回答。输出2-4句，可以带一个表情标记。"},
-                ]
-                xr = client.chat.completions.create(
-                    model=MODEL, messages=retry_messages, temperature=0.6, max_tokens=XIAOXIN_MAX_TOKENS)
-                xiaoxin_reply = xr.choices[0].message.content.strip()
-            if is_boundary_violating_xiaoxin_reply(user_msg, xiaoxin_reply):
-                retry_messages = [
-                    *xiaoxin_messages,
-                    {"role": "system", "content": guard.retry_instruction(user_msg, xiaoxin_reply)},
-                ]
-                xr = client.chat.completions.create(
-                    model=MODEL, messages=retry_messages, temperature=0.5, max_tokens=XIAOXIN_MAX_TOKENS)
-                xiaoxin_reply = xr.choices[0].message.content.strip()
-        except Exception as e:
-            return jsonify({"error": f"小芯 API 错误: {e}"}), 500
+        if is_boundary_violating_xiaoxin_reply(user_msg, xiaoxin_reply):
+            retry_messages = [
+                *xiaoxin_messages,
+                {"role": "system", "content": guard.retry_instruction(user_msg, xiaoxin_reply)},
+            ]
+            xr = client.chat.completions.create(
+                model=MODEL, messages=retry_messages, temperature=0.5, max_tokens=XIAOXIN_MAX_TOKENS)
+            xiaoxin_reply = xr.choices[0].message.content.strip()
+    except Exception as e:
+        return jsonify({"error": f"小芯 API 错误: {e}"}), 500
 
     if is_fragmented_xiaoxin_reply(xiaoxin_reply):
         xiaoxin_reply = fallback_xiaoxin_reply(user_msg)
@@ -1011,7 +996,7 @@ def v2_relationship_run():
                 max_days=max_days,
                 mode=mode,
                 turns_per_day=turns_per_day,
-                chat_fn=lambda uid, msg, dd: chat_core(uid, msg, dd),
+                chat_fn=lambda uid, msg, dd, history=None: chat_core(uid, msg, dd, history=history),
                 memory_fn=save_test_memory,
                 greeting_fn=lambda uid, today, dd: relationship_state.greeting_payload(
                     Path(dd), uid, today=today

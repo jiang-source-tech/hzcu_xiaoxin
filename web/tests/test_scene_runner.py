@@ -74,7 +74,7 @@ class SceneRunnerTest(unittest.TestCase):
         self.assertEqual(result["verdict"], "WARN")
 
     def test_streaming_episode_includes_scene_metadata(self):
-        def chat_fn(user_id, user_msg, raw_data_dir):
+        def chat_fn(user_id, user_msg, raw_data_dir, history=None):
             state = relationship_state.default_state()
             relationship_state.save_state(Path(raw_data_dir), user_id, state)
             return {"reply": "慢慢来，我们先把课程节奏拆小一点。"}
@@ -99,7 +99,7 @@ class SceneRunnerTest(unittest.TestCase):
 
 
     def test_streaming_episode_includes_manual_review_context(self):
-        def chat_fn(user_id, user_msg, raw_data_dir):
+        def chat_fn(user_id, user_msg, raw_data_dir, history=None):
             state = relationship_state.default_state()
             relationship_state.save_state(Path(raw_data_dir), user_id, state)
             return {"reply": "ok"}
@@ -127,7 +127,7 @@ class SceneRunnerTest(unittest.TestCase):
         self.assertEqual(review["audit_targets"]["xiaoxin_reply"], "ok")
 
     def test_streaming_episode_includes_memory_audit(self):
-        def chat_fn(user_id, user_msg, raw_data_dir):
+        def chat_fn(user_id, user_msg, raw_data_dir, history=None):
             data_dir = Path(raw_data_dir)
             state = relationship_state.load_state(data_dir, user_id)
             analysis = turn_analyzer.analyze(user_msg, state)
@@ -179,7 +179,7 @@ class SceneRunnerTest(unittest.TestCase):
         self.assertEqual(audit["long_term_memories"][0]["type"], "major")
 
     def test_streaming_chat_episode_can_expand_into_same_day_turns(self):
-        def chat_fn(user_id, user_msg, raw_data_dir):
+        def chat_fn(user_id, user_msg, raw_data_dir, history=None):
             state = relationship_state.default_state()
             relationship_state.save_state(Path(raw_data_dir), user_id, state)
             return {"reply": f"reply to {user_msg}"}
@@ -209,7 +209,7 @@ class SceneRunnerTest(unittest.TestCase):
         )
 
     def test_streaming_includes_idle_gap_between_interaction_days(self):
-        def chat_fn(user_id, user_msg, raw_data_dir):
+        def chat_fn(user_id, user_msg, raw_data_dir, history=None):
             state = relationship_state.default_state()
             relationship_state.save_state(Path(raw_data_dir), user_id, state)
             return {"reply": "ok"}
@@ -301,7 +301,7 @@ class SceneRunnerTest(unittest.TestCase):
         self.assertIn("1 violation", summary)
 
     def test_streaming_mixed_adds_pressure_turns_after_scripted_turns(self):
-        def chat_fn(user_id, user_msg, raw_data_dir):
+        def chat_fn(user_id, user_msg, raw_data_dir, history=None):
             state = relationship_state.default_state()
             relationship_state.save_state(Path(raw_data_dir), user_id, state)
             return {"reply": f"reply to {user_msg}"}
@@ -340,7 +340,7 @@ class SceneRunnerTest(unittest.TestCase):
         self.assertTrue(all("day_summary" in ep for ep in episodes))
 
     def test_streaming_mixed_mode_uses_random_user_initiated_days_to_max_days(self):
-        def chat_fn(user_id, user_msg, raw_data_dir):
+        def chat_fn(user_id, user_msg, raw_data_dir, history=None):
             state = relationship_state.default_state()
             relationship_state.save_state(Path(raw_data_dir), user_id, state)
             return {"reply": f"reply to {user_msg}"}
@@ -381,7 +381,7 @@ class SceneRunnerTest(unittest.TestCase):
         self.assertEqual(covered_until, 7)
 
     def test_streaming_random_timeline_shows_initial_idle_gap(self):
-        def chat_fn(user_id, user_msg, raw_data_dir):
+        def chat_fn(user_id, user_msg, raw_data_dir, history=None):
             state = relationship_state.default_state()
             relationship_state.save_state(Path(raw_data_dir), user_id, state)
             return {"reply": "ok"}
@@ -414,7 +414,7 @@ class SceneRunnerTest(unittest.TestCase):
         self.assertEqual(records[1]["day"], 3)
 
     def test_streaming_pressure_mode_uses_pressure_generator_only(self):
-        def chat_fn(user_id, user_msg, raw_data_dir):
+        def chat_fn(user_id, user_msg, raw_data_dir, history=None):
             state = relationship_state.default_state()
             relationship_state.save_state(Path(raw_data_dir), user_id, state)
             return {"reply": f"reply to {user_msg}"}

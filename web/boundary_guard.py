@@ -34,7 +34,11 @@ def load_campus_directory() -> dict:
 
 
 def match_location_query(user_msg: str) -> str | None:
-    """匹配 campus_directory.json 中的地点查询，返回答案或 None。"""
+    """匹配 campus_directory.json 中的地点查询，返回答案或 None。
+
+    当多个条目同时命中且得分接近时（学生在问多个不同地点），
+    返回 None 交给模型综合回答，避免只答一个漏掉另一个。
+    """
     data = load_campus_directory()
     entries = data.get("entries", [])
     if not entries:
@@ -47,8 +51,9 @@ def match_location_query(user_msg: str) -> str | None:
                         "如何预约", "想去", "要去", "补办", "报修")
     has_location_marker = any(m in user_msg for m in location_markers)
 
-    best = None
-    best_score = 0.0
+    threshold = 0.5 if has_location_marker else 2.0
+    # 收集所有超过阈值的条目，而非只取最高分
+    candidates: list[tuple[float, dict]] = []
 
     for entry in entries:
         score = 0.0
@@ -65,16 +70,24 @@ def match_location_query(user_msg: str) -> str | None:
         overlap = q_bigrams & msg_bigrams
         score += len(overlap) * 0.2
 
-        if score > best_score:
-            best_score = score
-            best = entry
+        if score >= threshold:
+            candidates.append((score, entry))
 
-    # 有地点疑问词时阈值低，没有时要求至少匹配 2 个关键词（加权后约 >=2）
-    threshold = 0.5 if has_location_marker else 2.0
-    if best and best_score >= threshold:
-        return best.get("answer", "")
+    if not candidates:
+        return None
 
-    return None
+    # 按得分降序
+    candidates.sort(key=lambda x: x[0], reverse=True)
+    best_score, best = candidates[0]
+
+    # 如果多个条目得分接近（差 <1.0），说明学生在问多个不同地点，
+    # 不应只答一个——交给模型综合回答
+    if len(candidates) >= 2:
+        second_score = candidates[1][0]
+        if best_score - second_score < 1.0:
+            return None
+
+    return best.get("answer", "")
 
 
 def format_canteen_locations() -> str:
@@ -215,9 +228,23 @@ def classify_message(user_msg: str) -> str:
         if match_location_query(text):
             return "location_query"
     elif match_location_query(text):
-        return "location_query"
+        # 没有地点疑问词但关键词命中了：可能是地点缩写查询（如"打印成绩单"），
+        # 也可能是细节追问（如"打印成绩单需要带什么证件"）。
+        # 检查是否包含非地点追问词，如果有则不拦截，交给模型。
+        non_location_followup = (
+            "带什么", "要带", "证件", "材料", "身份证", "学生证", "校园卡",
+            "流程", "步骤", "怎么办", "怎么弄", "怎么操作", "怎么搞",
+            "要不要", "需不需要", "用不用", "必须",
+            "多少钱", "费用", "收费", "免费",
+            "几点", "时间", "上班", "下班", "工作时间",
+            "电话", "联系", "预约", "排队",
+        )
+        if not contains_any(text, non_location_followup):
+            return "location_query"
 
-    if contains_any(text, ("成绩", "查分", "绩点", "期末分", "考试分")):
+    # "成绩单打印/办理" 不是查个人成绩，不应拦截
+    transcript_context = contains_any(text, ("成绩单", "打印成绩", "打印终端", "自助打印"))
+    if not transcript_context and contains_any(text, ("成绩", "查分", "绩点", "期末分", "考试分")):
         return "private_records"
 
     if contains_any(text, ("缴费", "交学费", "选课", "退课", "补考报名", "转专业手续", "请假流程")):

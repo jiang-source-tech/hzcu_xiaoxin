@@ -124,7 +124,7 @@ class RelationshipV2ApiTest(unittest.TestCase):
                 run_streaming.assert_not_called()
 
     def test_run_with_real_stream_accepts_pressure_options(self):
-        def fake_chat_core(user_id, message, data_dir):
+        def fake_chat_core(user_id, message, data_dir, history=None):
             return {
                 "reply": "I hear the concern. Let's sort out the first week step by step.",
                 "speech": "I hear the concern. Let's sort out the first week step by step.",
