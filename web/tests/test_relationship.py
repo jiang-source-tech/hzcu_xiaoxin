@@ -204,6 +204,50 @@ class AppRelationshipTest(unittest.TestCase):
         self.assertEqual(payload["next_hook"]["topic"], "course_rhythm")
         self.assertEqual(saved["core_concern"], "担心信电课程跟不上")
 
+    def test_chat_core_builds_safe_location_fact_for_relationship_test(self):
+        app_module = self.app_module
+
+        class FakeMessage:
+            content = "行政楼往南校区进门右手边走，图书馆的钟楼远远就能看见。[think]"
+
+        class FakeChoice:
+            finish_reason = "stop"
+            message = FakeMessage()
+
+        class FakeResponse:
+            choices = [FakeChoice()]
+
+        class FakeCompletions:
+            def __init__(self):
+                self.calls = []
+
+            def create(self, **kwargs):
+                self.calls.append(kwargs)
+                return FakeResponse()
+
+        class FakeChat:
+            def __init__(self):
+                self.completions = FakeCompletions()
+
+        class FakeClient:
+            def __init__(self):
+                self.chat = FakeChat()
+
+        fake_client = FakeClient()
+        with tempfile.TemporaryDirectory() as tmp:
+            with patch.object(app_module, "client", fake_client):
+                payload = app_module.chat_core(
+                    "alice",
+                    "我要打印成绩单英文材料，你知道学校哪里能打印不？",
+                    tmp,
+                )
+
+        self.assertIn("行政楼一楼自助终端", payload["reply"])
+        self.assertIn("以终端页面", payload["reply"])
+        self.assertNotIn("右手边", payload["reply"])
+        self.assertNotIn("钟楼", payload["reply"])
+        self.assertEqual(len(fake_client.chat.completions.calls), 0)
+
     def test_greeting_route_context_once_per_day(self):
         app_module = self.app_module
         with tempfile.TemporaryDirectory() as tmp:

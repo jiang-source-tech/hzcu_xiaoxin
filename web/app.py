@@ -304,6 +304,21 @@ def chat_core(user_id: str, user_msg: str, data_dir: str | None = None, history:
     relationship = relationship_state.load_state(data_path, user_id)
     turn_analysis = turn_analyzer.analyze(user_msg, relationship)
 
+    safe_reply = guard.safe_reply(user_msg)
+    if safe_reply:
+        relationship = relationship_state.update_after_turn(relationship, turn_analysis)
+        relationship_state.save_state(data_path, user_id, relationship)
+        clean, expression = parse_expression(safe_reply)
+        return {
+            "reply": clean,
+            "speech": guard.to_speech_text(clean),
+            "expression": expression,
+            "kind": "chat",
+            "state": relationship_state.public_state(relationship),
+            "next_hook": relationship.get("next_hook"),
+            "companion_action": relationship_state.companion_action(relationship),
+        }
+
     # 构建 system prompt + 对话历史
     system_prompt = build_system_prompt(user_id, relationship, turn_analysis)
     # 注入 campus_directory 地点事实参考，防止模型幻觉编造
@@ -504,6 +519,21 @@ def chat():
     _, history = active_conversations[user_id]
     relationship = relationship_state.load_state(DATA_DIR, user_id)
     turn_analysis = turn_analyzer.analyze(user_msg, relationship)
+
+    safe_reply = guard.safe_reply(user_msg)
+    if safe_reply:
+        relationship = relationship_state.update_after_turn(relationship, turn_analysis)
+        relationship_state.save_state(DATA_DIR, user_id, relationship)
+        payload = record_chat_reply(
+            user_id,
+            sid,
+            history,
+            user_msg,
+            safe_reply,
+            relationship=relationship,
+            companion_action=relationship_state.companion_action(relationship),
+        )
+        return jsonify(payload)
 
     # 构建 system prompt
     system_prompt = build_system_prompt(user_id, relationship, turn_analysis)
@@ -791,34 +821,47 @@ def selfplay_turn():
         return jsonify({"error": "消息不能为空"}), 400
 
     # 1. 小芯回复
-    xiaoxin_sp = build_system_prompt("selfplay")
-    xiaoxin_messages = [
-        {"role": "system", "content": xiaoxin_sp},
-        *build_selfplay_messages(conversation, user_msg),
-    ]
-    xiaoxin_reply = None
-    try:
-        xr = client.chat.completions.create(
-            model=MODEL, messages=xiaoxin_messages, temperature=0.8, max_tokens=XIAOXIN_MAX_TOKENS)
-        xiaoxin_reply = xr.choices[0].message.content.strip()
-        if response_was_truncated(xr) or is_fragmented_xiaoxin_reply(xiaoxin_reply):
-            retry_messages = [
-                *xiaoxin_messages,
-                {"role": "system", "content": "上一条回复不完整，请重新用小芯的口吻完整回答。输出2-4句，可以带一个表情标记。"},
-            ]
+    template_categories = {
+        "admissions_guidance",
+        "canteen_locations",
+        "canteen_recommendation",
+        "crisis",
+        "location_query",
+        "official_contact",
+        "official_process",
+        "private_records",
+    }
+    category = guard.classify_message(user_msg)
+    xiaoxin_reply = guard.safe_reply(user_msg) if category in template_categories else None
+
+    if not xiaoxin_reply:
+        xiaoxin_sp = build_system_prompt("selfplay")
+        xiaoxin_messages = [
+            {"role": "system", "content": xiaoxin_sp},
+            *build_selfplay_messages(conversation, user_msg),
+        ]
+        try:
             xr = client.chat.completions.create(
-                model=MODEL, messages=retry_messages, temperature=0.6, max_tokens=XIAOXIN_MAX_TOKENS)
+                model=MODEL, messages=xiaoxin_messages, temperature=0.8, max_tokens=XIAOXIN_MAX_TOKENS)
             xiaoxin_reply = xr.choices[0].message.content.strip()
-        if is_boundary_violating_xiaoxin_reply(user_msg, xiaoxin_reply):
-            retry_messages = [
-                *xiaoxin_messages,
-                {"role": "system", "content": guard.retry_instruction(user_msg, xiaoxin_reply)},
-            ]
-            xr = client.chat.completions.create(
-                model=MODEL, messages=retry_messages, temperature=0.5, max_tokens=XIAOXIN_MAX_TOKENS)
-            xiaoxin_reply = xr.choices[0].message.content.strip()
-    except Exception as e:
-        return jsonify({"error": f"小芯 API 错误: {e}"}), 500
+            if response_was_truncated(xr) or is_fragmented_xiaoxin_reply(xiaoxin_reply):
+                retry_messages = [
+                    *xiaoxin_messages,
+                    {"role": "system", "content": "上一条回复不完整，请重新用小芯的口吻完整回答。输出2-4句，可以带一个表情标记。"},
+                ]
+                xr = client.chat.completions.create(
+                    model=MODEL, messages=retry_messages, temperature=0.6, max_tokens=XIAOXIN_MAX_TOKENS)
+                xiaoxin_reply = xr.choices[0].message.content.strip()
+            if is_boundary_violating_xiaoxin_reply(user_msg, xiaoxin_reply):
+                retry_messages = [
+                    *xiaoxin_messages,
+                    {"role": "system", "content": guard.retry_instruction(user_msg, xiaoxin_reply)},
+                ]
+                xr = client.chat.completions.create(
+                    model=MODEL, messages=retry_messages, temperature=0.5, max_tokens=XIAOXIN_MAX_TOKENS)
+                xiaoxin_reply = xr.choices[0].message.content.strip()
+        except Exception as e:
+            return jsonify({"error": f"小芯 API 错误: {e}"}), 500
 
     if is_fragmented_xiaoxin_reply(xiaoxin_reply):
         xiaoxin_reply = fallback_xiaoxin_reply(user_msg)

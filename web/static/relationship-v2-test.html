@@ -203,66 +203,8 @@
   .scene-head-title { font-weight: 600; }
   .scene-head-desc { font-size: 0.8rem; color: var(--muted); }
 
-  .badge {
-    display: inline-block;
-    padding: 2px 10px;
-    border-radius: 12px;
-    font-size: 0.75rem;
-    font-weight: 700;
-    letter-spacing: 0.03em;
-  }
-  .badge.pass { background: var(--green-soft); color: var(--green); }
-  .badge.warn { background: var(--gold-soft); color: var(--gold); }
-  .badge.fail { background: var(--red-soft); color: var(--red); }
-  .badge.running { background: var(--blue-soft); color: var(--blue); }
-
   .scene-body { padding: 16px 20px; }
   .scene-body.hidden { display: none; }
-
-  /* Quality panel */
-  .quality-panel {
-    background: var(--surface-soft);
-    border-radius: var(--radius);
-    padding: 14px 16px;
-    margin-bottom: 16px;
-  }
-  .quality-panel h4 {
-    font-size: 0.85rem;
-    margin-bottom: 10px;
-    color: var(--teal);
-  }
-  .score-bars { display: flex; flex-direction: column; gap: 6px; }
-  .score-row {
-    display: grid;
-    grid-template-columns: 90px 1fr 30px;
-    align-items: center;
-    gap: 8px;
-    font-size: 0.82rem;
-  }
-  .score-row .dim { color: var(--muted); }
-  .score-row .bar-bg {
-    height: 8px;
-    background: var(--line);
-    border-radius: 4px;
-    overflow: hidden;
-  }
-  .score-row .bar-fill {
-    height: 100%;
-    border-radius: 4px;
-    transition: width 0.6s cubic-bezier(0.16,1,0.3,1);
-  }
-  .bar-fill.high { background: var(--green); }
-  .bar-fill.mid { background: var(--gold); }
-  .bar-fill.low { background: var(--red); }
-  .score-row .val { font-weight: 700; text-align: right; }
-  .overall-comment {
-    margin-top: 10px;
-    padding-top: 10px;
-    border-top: 1px solid var(--line);
-    font-size: 0.85rem;
-    color: var(--ink);
-    font-style: italic;
-  }
 
   /* Daily LLM replay */
   .replay-intro {
@@ -297,13 +239,6 @@
     cursor: pointer;
   }
   .day-title { font-weight: 700; }
-  .day-summary {
-    padding: 8px 12px;
-    font-size: 0.82rem;
-    color: var(--muted);
-    border-top: 1px solid var(--line);
-    white-space: pre-wrap;
-  }
   .day-body.hidden { display: none; }
   .idle-gap {
     padding: 12px 0;
@@ -484,23 +419,6 @@
     flex-direction: column;
     gap: 10px;
   }
-  .memory-audit-flags {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-  }
-  .audit-flag {
-    display: inline-block;
-    padding: 3px 8px;
-    border-radius: 4px;
-    font-size: 0.7rem;
-    border: 1px solid var(--line);
-    background: var(--surface);
-    color: var(--muted);
-  }
-  .audit-flag.pass { background: var(--green-soft); color: var(--green); border-color: var(--green); }
-  .audit-flag.warn { background: var(--gold-soft); color: var(--gold); border-color: var(--gold); }
-  .audit-flag.fail { background: var(--red-soft); color: var(--red); border-color: var(--red); }
   .memory-audit-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -525,34 +443,6 @@
     word-break: break-word;
   }
 
-  /* Violations */
-  .violation-item {
-    margin-top: 8px;
-    padding: 8px 10px;
-    border-left: 3px solid var(--red);
-    background: var(--red-soft);
-    border-radius: 0 var(--radius) var(--radius) 0;
-    font-size: 0.82rem;
-    color: var(--red);
-    line-height: 1.5;
-  }
-  .violation-type {
-    font-weight: 700;
-    margin-right: 4px;
-  }
-
-  /* Notes */
-  .scene-notes {
-    margin-top: 12px;
-    padding: 10px 14px;
-    background: var(--surface-soft);
-    border-radius: var(--radius);
-    font-size: 0.82rem;
-    color: var(--muted);
-    white-space: pre-line;
-    line-height: 1.6;
-  }
-
   @media (max-width: 700px) {
     .toolbar {
       grid-template-columns: 1fr 1fr;
@@ -567,7 +457,7 @@
 <div class="shell">
   <div class="top">
     <h1>每日 LLM 对话回放</h1>
-    <div class="sub">用户模拟 LLM → 小芯真实管线 → 质量裁判 LLM，按天回放每轮对话和状态变化。</div>
+    <div class="sub">用户模拟 LLM → 小芯真实管线，按天回放每轮对话、状态变化和记忆记录，供人工审核。</div>
     <div class="nav">
       <a href="/test">对话压测</a> ·
       <a href="/">主页</a>
@@ -606,10 +496,6 @@
       <label for="seedInput">Seed（可选）</label>
       <input type="number" id="seedInput" placeholder="随机">
     </div>
-    <div class="checkbox-row">
-      <input type="checkbox" id="skipJudge">
-      <label for="skipJudge">跳过质量裁判</label>
-    </div>
     <button class="btn btn-primary" id="runButton" onclick="startRun()">开始测试</button>
     <button class="btn btn-secondary" id="clearButton" onclick="clearResults()">清空</button>
   </div>
@@ -646,60 +532,11 @@
     return d.innerHTML;
   }
 
-  function renderQualityPanel(qj) {
-    if (!qj || !qj.scores) return '';
-    const scores = qj.scores;
-    let bars = '';
-    for (const [dim, val] of Object.entries(scores)) {
-      const pct = val != null ? (val / 5 * 100) : 0;
-      const cls = val >= 4 ? 'high' : val >= 3 ? 'mid' : 'low';
-      bars += `
-        <div class="score-row">
-          <span class="dim">${escapeHtml(dim)}</span>
-          <div class="bar-bg"><div class="bar-fill ${cls}" style="width:${pct}%"></div></div>
-          <span class="val">${val != null ? val : '?'}</span>
-        </div>`;
-    }
-    return `
-      <div class="quality-panel">
-        <h4>质量裁判评分</h4>
-        <div class="score-bars">${bars}</div>
-        ${qj.overall_comment ? `<div class="overall-comment">${escapeHtml(qj.overall_comment)}</div>` : ''}
-      </div>`;
-  }
-
   function formatCompanionAction(action) {
     if (!action || typeof action !== 'object') return 'none';
     const kind = action.kind || 'unknown';
     const intensity = action.intensity != null ? ` ${action.intensity}` : '';
     return `${kind}${intensity}`;
-  }
-
-  function formatViolationDetail(v) {
-    const detail = String(v.detail || '');
-    const stageMatch = detail.match(/期望 user_stage=([^，。]+)，实际=([^，。]+)。?/);
-    if (stageMatch) {
-      return `期望阶段 ${stageMatch[1]}，实际阶段 ${stageMatch[2]}`;
-    }
-    const topicMatch = detail.match(/期望 recent_topic=([^，。]+)，实际=([^，。]+)。?/);
-    if (topicMatch) {
-      return `期望主题 ${topicMatch[1]}，实际主题 ${topicMatch[2]}`;
-    }
-    const hookMatch = detail.match(/期望 next_hook\.topic=([^，。]+)，实际=([^，。]+)。?/);
-    if (hookMatch) {
-      return `期望 hook 主题 ${hookMatch[1]}，实际 hook 主题 ${hookMatch[2]}`;
-    }
-    if (detail) return detail;
-    return v.evidence || '';
-  }
-
-  function renderViolation(v) {
-    const detail = formatViolationDetail(v);
-    return `
-      <div class="violation-item">
-        <span class="violation-type">⚠ ${escapeHtml(v.type || '规则提醒')}</span>
-        ${escapeHtml(detail)}
-      </div>`;
   }
 
   function formatReviewValue(value) {
@@ -713,8 +550,6 @@
 
   function renderManualReviewPanel(r) {
     const review = r.review_context || {};
-    const probes = review.probes || {};
-    const forbid = review.forbid_patterns || [];
     const intent = review.intent || (r.action === 'greeting' ? '打开页面后触发每日问候' : '无');
     return `
       <div class="manual-review">
@@ -723,14 +558,6 @@
           <div class="review-item">
             <span class="review-label">场景意图</span>
             <div class="review-value">${escapeHtml(formatReviewValue(intent))}</div>
-          </div>
-          <div class="review-item">
-            <span class="review-label">状态探针</span>
-            <div class="review-value">${escapeHtml(formatReviewValue(probes))}</div>
-          </div>
-          <div class="review-item">
-            <span class="review-label">禁用模式</span>
-            <div class="review-value">${escapeHtml(formatReviewValue(forbid))}</div>
           </div>
           <div class="review-item">
             <span class="review-label">本轮核对</span>
@@ -764,14 +591,9 @@
 
     const after = audit.relationship_after || {};
     const hook = after.next_hook || {};
-    const flags = audit.audit_flags || [];
     const relationshipChanges = audit.relationship_changes || [];
     const memoryEvents = audit.memory_events || [];
     const longTerm = audit.long_term_memories || [];
-
-    const flagHtml = flags.length
-      ? flags.map(f => `<span class="audit-flag ${escapeHtml(f.severity || 'info')}">${escapeHtml(f.label || f.type || '记忆提示')}</span>`).join('')
-      : '<span class="audit-flag">本轮无明显记忆变化</span>';
 
     const relationshipSummary = [
       `core_concern: ${after.core_concern || '空'}`,
@@ -794,7 +616,6 @@
       <details class="memory-audit" open>
         <summary>记忆审计</summary>
         <div class="memory-audit-body">
-          <div class="memory-audit-flags">${flagHtml}</div>
           <div class="memory-audit-grid">
             <div class="memory-audit-block">
               <span class="memory-audit-title">关系状态记忆</span>
@@ -847,7 +668,7 @@
     return source || '未知来源';
   }
 
-  function showDaySection(sceneId, day, summary) {
+  function showDaySection(sceneId, day) {
     const body = document.getElementById(`body-${sceneId}`);
     const safeDay = String(day).replace(/[^a-zA-Z0-9_-]/g, '_');
     const id = `day-${sceneId}-${safeDay}`;
@@ -859,13 +680,10 @@
       section.innerHTML = `
         <div class="day-head" onclick="this.parentElement.querySelector('.day-body').classList.toggle('hidden')">
           <span class="day-title">Day ${escapeHtml(String(day))}</span>
-          <span>${escapeHtml(summary || '')}</span>
         </div>
         <div class="day-body" id="${id}-body"></div>`;
       body.appendChild(section);
     }
-    const summaryEl = section.querySelector('.day-head span:last-child');
-    if (summaryEl && summary) summaryEl.textContent = summary;
     return document.getElementById(`${id}-body`);
   }
 
@@ -928,13 +746,6 @@
       html += renderManualReviewPanel(r);
     }
 
-    (r.violations || []).forEach(v => {
-      html += renderViolation(v);
-    });
-    if (r.day_summary) {
-      html += `<div class="day-summary">${escapeHtml(r.day_summary)}</div>`;
-    }
-
     return `<div class="episode-record">${html}</div>`;
   }
 
@@ -947,7 +758,6 @@
       card.innerHTML = `
         <div class="scene-head" onclick="this.parentElement.querySelector('.scene-body').classList.toggle('hidden')">
           <div class="scene-head-left">
-            <span class="badge running">RUNNING</span>
             <span class="scene-head-title">${escapeHtml(name)}</span>
             <span class="scene-head-desc" id="desc-${sceneId}"></span>
           </div>
@@ -960,33 +770,13 @@
     return card.querySelector('.scene-body');
   }
 
-  function updateSceneVerdict(sceneId, verdict, notes, desc, seed) {
-    const card = document.getElementById(`card-${sceneId}`);
-    if (!card) return;
-    const badge = card.querySelector('.badge');
-    const vb = verdict === 'PASS' ? 'pass' : verdict === 'WARN' ? 'warn' : 'fail';
-    badge.className = `badge ${vb}`;
-    badge.textContent = verdict;
-    const descEl = document.getElementById(`desc-${sceneId}`);
-    if (descEl) descEl.textContent = desc ? `· ${escapeHtml(desc)}` : '';
-    const body = document.getElementById(`body-${sceneId}`);
-    if (body && notes) {
-      const existing = body.querySelector('.scene-notes');
-      if (existing) existing.remove();
-      const div = document.createElement('div');
-      div.className = 'scene-notes';
-      div.textContent = notes + (seed != null ? `\nseed: ${seed}` : '');
-      body.appendChild(div);
-    }
-  }
-
   function startRun() {
     const scene = document.getElementById('sceneSelect').value;
     const mode = document.getElementById('modeSelect').value;
     const turnsPerDay = parseInt(document.getElementById('turnsPerDaySelect').value, 10);
     const maxDaysRaw = document.getElementById('maxDaysInput').value;
     const seedRaw = document.getElementById('seedInput').value;
-    const skipJudge = document.getElementById('skipJudge').checked;
+    const skipJudge = true;
     const statusEl = document.getElementById('statusLine');
     const runBtn = document.getElementById('runButton');
     const resultsEl = document.getElementById('results');
@@ -1086,29 +876,18 @@
     if (eventType === 'episode') {
       currentSceneId = data.scene_id || currentSceneId || 'unknown';
       showSceneCard(currentSceneId, data.scene_name || '进行中…');
-      const dayBody = showDaySection(currentSceneId, data.day, data.day_summary || '');
+      const dayBody = showDaySection(currentSceneId, data.day);
       dayBody.innerHTML += renderRecord(data);
       dayBody.scrollIntoView({ behavior: 'smooth', block: 'end' });
-    } else if (eventType === 'quality_judge') {
-      const body = showSceneCard(currentSceneId || 'unknown', '进行中…');
-      body.innerHTML += renderQualityPanel(data);
     } else if (eventType === 'complete') {
       currentSceneId = data.scene_id;
-      // Pre-create the card if it doesn't exist
       const body = showSceneCard(data.scene_id, data.name);
-      // Add judge panel if not already shown
-      if (data.quality_judge && data.quality_judge.scores) {
-        const qp = body.querySelector('.quality-panel');
-        if (!qp) body.innerHTML += renderQualityPanel(data.quality_judge);
-      }
-      // Add records if not already shown (for rendering without streaming)
       if (data.records && body.querySelectorAll('.episode-record').length === 0) {
         data.records.forEach(r => {
-          const dayBody = showDaySection(data.scene_id, r.day, r.day_summary || '');
+          const dayBody = showDaySection(data.scene_id, r.day);
           dayBody.innerHTML += renderRecord(r);
         });
       }
-      updateSceneVerdict(data.scene_id, data.verdict, data.notes, data.description, data.seed);
     } else if (eventType === 'error') {
       const statusEl = document.getElementById('statusLine');
       statusEl.textContent = `错误: ${data.message}`;

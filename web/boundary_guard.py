@@ -235,6 +235,20 @@ def contains_any(text: str, keywords: tuple[str, ...]) -> bool:
     return any(keyword in text for keyword in keywords)
 
 
+def is_action_commitment(text: str) -> bool:
+    """用户已经在确认下一步/收尾时，不要被地点关键词抢成 FAQ。"""
+    if not text:
+        return False
+    action_markers = (
+        "先去", "先试", "试试", "不行再", "不用了", "不去了",
+        "算了", "谢了", "谢谢", "我先", "那我去", "那我先",
+        "找到之后", "我再去", "再去", "转转", "逛逛",
+    )
+    if not contains_any(text, action_markers):
+        return False
+    return not text.strip().endswith(("?", "？"))
+
+
 def classify_message(user_msg: str) -> str:
     text = user_msg or ""
 
@@ -247,6 +261,9 @@ def classify_message(user_msg: str) -> str:
     ))
     if admissions_context:
         return "admissions_guidance"
+
+    if is_action_commitment(text):
+        return "action_commitment"
 
     # 食堂/餐饮优先于通用地点查询，保留原有 canteen 模板逻辑
     food_context = contains_any(text, ("食堂", "餐厅", "夜宵", "吃饭", "哪里吃", "卤肉饭", "肉肉饭", "煎包", "瘦肉丸", "麻辣烫", "香锅"))
@@ -321,7 +338,7 @@ def template_reply(user_msg: str) -> str | None:
     if category == "canteen_locations":
         locations = format_canteen_locations()
         return (
-            f"食堂我知道个大概：{locations}。具体几号楼几层、窗口和营业时间我不敢乱说，"
+            f"食堂我能给你指个大方向：{locations}。具体几号楼几层、窗口和营业时间我不敢乱说，"
             "最好看校园地图或校园服务信息。[think]"
         )
 
@@ -373,6 +390,61 @@ def template_reply(user_msg: str) -> str | None:
         if answer:
             return f"{answer}[think]"
         return None
+
+    return None
+
+
+def safe_reply(user_msg: str) -> str | None:
+    """Programmatic Xiaoxin-style replies for fact/errand turns.
+
+    This is intentionally not LLM-written: wording comes from fixed sentence
+    slots, and facts come only from the local knowledge base.
+    """
+    category = classify_message(user_msg)
+    text = user_msg or ""
+
+    if category == "action_commitment":
+        if contains_any(text, ("下次聊", "去办事", "去忙", "办完", "有空", "找到之后", "转转", "逛逛")):
+            return "嗯，先去忙吧。办完再来找我聊就行；别急，按你自己的节奏来。[wink]"
+        return "嗯，先去试试就行。真办不下来，再按现场提示或官方窗口确认；我这边不替现场情况打包票。[think]"
+
+    if category == "canteen_locations":
+        locations = format_canteen_locations()
+        return (
+            f"食堂我能给你指个大方向：{locations}。具体几号楼几层、窗口和营业时间我不乱说，"
+            "到时候看校园地图或校园服务信息更准。[think]"
+        )
+
+    if category == "canteen_recommendation":
+        public_details = format_canteen_public_details()
+        return (
+            f"吃饭这块我只按公开信息说：{public_details}。具体口味、价格、窗口和营业时间，"
+            "还是你实地看看更准，我不乱封“最好吃”。[wink]"
+        )
+
+    if category == "location_query":
+        answer = match_location_query(text)
+        if not answer:
+            return None
+        if contains_any(text, ("成绩单", "打印成绩", "打印终端", "自助打印", "CET", "GPA")):
+            return (
+                "嗯，打印成绩类材料可以先看行政楼一楼自助终端。它能打印出国留学成绩单（中/英文）、"
+                "CET等级证明、计算机等级证明、GPA计算方法（中/英文）、出国留学毕业证（中/英文）及在读证明；"
+                "具体以终端页面或官方信息为准。[think]"
+            )
+        if contains_any(text, ("快递", "取件", "包裹", "菜鸟", "驿站", "中通", "圆通")):
+            return f"包裹先别按宿舍楼下猜哈。{answer}[think]"
+        return f"我查到的确定信息是：{answer} 其他现场细节还是以官方或现场提示为准。[think]"
+
+    if category in {
+        "admissions_guidance",
+        "competition_resources",
+        "crisis",
+        "official_contact",
+        "official_process",
+        "private_records",
+    }:
+        return template_reply(text)
 
     return None
 
@@ -465,6 +537,27 @@ def detect_reply_violations(user_msg: str, reply: str) -> list[dict]:
                 })
                 break
 
+    express_context = contains_any(combined, (
+        "快递", "取件", "包裹", "菜鸟", "驿站", "中通", "圆通", "顺丰", "京东",
+    ))
+    if express_context:
+        for phrase in (
+            "外卖柜", "你楼下", "宿舍楼下", "寝室楼下", "楼下快递站",
+            "你宿舍楼下", "你寝室楼下", "宿舍对应", "寝室对应",
+        ):
+            if phrase in clean:
+                if contains_any(clean, (
+                    "不能", "不应该", "不是", "不在", "不要把", "不清楚你住",
+                    "不知道你住", "不能按", "不能假设", "以取件通知为准",
+                )):
+                    continue
+                violations.append({
+                    "type": "编造快递点或假设用户宿舍位置",
+                    "evidence": phrase,
+                    "detail": "快递回复不能假设用户住在哪栋宿舍，也不能把外卖柜说成快递点；应列出已知快递点并提醒以取件通知为准。",
+                })
+                break
+
     for phrase in ("我帮你联系", "我去打听", "联系方式我", "给你联系方式", "直接找那位"):
         if phrase in clean:
             violations.append({
@@ -540,6 +633,11 @@ _KNOWN_COMPETITIONS = (
     "物理科技创新竞赛", "电子设计", "智能车",
 )
 
+_GENERIC_COMPETITION_REFERENCES = (
+    "学院和竞赛", "了解竞赛", "参加竞赛", "关注竞赛", "看看竞赛",
+    "看竞赛", "问竞赛", "问问竞赛", "咨询竞赛", "竞赛组", "竞赛负责",
+)
+
 # 触发编造人物检测的模式
 _FABRICATED_PERSON_PATTERNS = (
     # 编造具体的「某个学生/学长/学姐」
@@ -603,6 +701,8 @@ def _check_fabricated_competitions(clean: str, violations: list[dict]) -> None:
     # 匹配「XX竞赛」「XX比赛」「XX大赛」模式的词组
     comp_matches = _re.findall(r"[一-鿿A-Za-z]{2,8}(?:竞赛|比赛|大赛|挑战赛)", clean)
     for comp in comp_matches:
+        if any(generic in comp for generic in _GENERIC_COMPETITION_REFERENCES):
+            continue
         if not any(known in comp for known in _KNOWN_COMPETITIONS):
             violations.append({
                 "type": "编造竞赛信息",

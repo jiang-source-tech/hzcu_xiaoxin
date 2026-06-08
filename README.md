@@ -17,7 +17,7 @@ xiaoxin/
 │   └── data/                  # 运行时数据（不入库）
 ├── web/                       # 网页版聊天 + 测试
 │   ├── app.py                 # Flask 后端（加载 SKILL → 调 LLM API）
-│   ├── boundary_guard.py      # 边界防护：模板回复 + 违规检测（含编造人物/竞赛检测）+ 地点查询匹配 + TTS 裁剪
+│   ├── boundary_guard.py      # 边界防护：safe_reply 确定性 builder + 模板回复 + 违规检测（含编造人物/竞赛/快递）+ 地点查询匹配 + 行动确认拦截 + TTS 裁剪
 │   ├── relationship_state.py  # 关系状态：阶段、hook、每日问候策略
 │   ├── scene_runner.py        # 关系闭环 v2 场景执行器（支持随机化 day 范围）
 │   ├── turn_analyzer.py       # 用户消息分析：阶段/情绪/主题/hook
@@ -43,10 +43,15 @@ xiaoxin/
 │   │   ├── test.html          # AI 自对话可视化测试页
 │   │   └── relationship-v2-test.html # 关系闭环每日 LLM 对话回放页
 │   ├── tests/                 # 单元测试和回归测试（含 CLI 测试脚本）
-│   │   ├── test_boundary_guard.py
-│   │   ├── test_scene_runner.py
-│   │   ├── test_self_play.py         # CLI 自对话测试脚本
-│   │   ├── test_relationship_v2.py   # 关系闭环 v2 CLI 测试脚本
+│   │   ├── test_boundary_guard.py     # 边界分类、模板回复、违规检测、TTS 裁剪
+│   │   ├── test_skill_boundaries.py   # SKILL.md 边界规则存在性验证
+│   │   ├── test_selfplay_end.py       # 自对话 API、模拟用户人格、边界重试
+│   │   ├── test_selfplay_openings.py  # /test 页面角色和开场白
+│   │   ├── test_selfplay_layout.py    # 测试页布局和违规展示
+│   │   ├── test_relationship.py       # 关系状态加载/保存/更新/prompt_summary
+│   │   ├── test_scene_runner.py       # v2 场景加载、随机化 day、memory_audit
+│   │   ├── test_relationship_v2.py    # 关系闭环 v2 CLI 测试脚本
+│   │   ├── test_relationship_v2_page.py # /relationship-test 页面和记忆审计面板
 │   │   └── test_relationship_self_play.py  # 关系闭环 v1 CLI 压测脚本
 │   └── requirements.txt
 └── .gitignore
@@ -103,7 +108,7 @@ python tests/test_self_play.py --scenario all
 - **随机范围**：`"day": [5, 14]` — 用 seed 在范围内随机解析，每次运行产生不同时间线，用于审查小芯在不同沉默间隔下的语义质量
 
 - Web 页面：http://localhost:5000/relationship-test
-- 页面形态：每日 LLM 对话回放，展示用户模拟 LLM、小芯 LLM、状态条、hook、违规提示和质量裁判评分
+- 页面形态：每日 LLM 对话回放，展示用户模拟 LLM、小芯 LLM、状态条、hook 和记忆审计面板（不展示系统 PASS/WARN/FAIL 和质量裁判评分，避免自动判断误伤真实对话）
 
 ```bash
 cd web
@@ -134,27 +139,41 @@ python tests/test_relationship_v2.py --mode pressure --turns-per-day 5
 
 ## 边界防护
 
-小芯采用**后置验证**架构：模型始终先自由回复，guard 在回复后检测违规并触发重试/纠偏。
-这样模型能感知对话上下文、共情用户情绪，而 guard 只做事实核查和安全兜底。
+小芯采用**"确定性 builder 前置 + LLM 开放聊天 + 后置验证"**三层架构：
+- 事实型办事回复由 `safe_reply()` 程序化生成，不调用模型
+- 开放陪伴场景走 LLM，回复后做越界检测并重试/兜底
+- 这样事实只来自本地知识库，模型只负责自然对话
 
 | 层级 | 文件 | 职责 |
 |------|------|------|
-| 事前 | `SKILL.md` | 人格定义中明确反编造规则 |
-| 事前 | `app.py` `build_system_prompt()` | System prompt 尾部追加 ⚠️ 禁编造约束 |
-| 事前 | `boundary_guard.py` `build_location_context()` | 将匹配的 campus_directory 地点事实注入 system prompt，防止模型幻觉编造位置关系 |
+| 前置 | `boundary_guard.py` `safe_reply()` | 确定性 builder：食堂、快递、地点、官方流程、收尾办事等场景直接组装回复 |
+| 前置 | `app.py` `build_location_context()` | 将匹配的 campus_directory 地点事实注入 system prompt，防止模型幻觉编造位置关系 |
+| 前置 | `SKILL.md` | 人格定义中明确反编造规则 |
+| 前置 | `app.py` `build_system_prompt()` | System prompt 尾部追加 ⚠️ 禁编造约束 |
 | 事后 | `boundary_guard.py` | 后置验证：违规检测 + 自动重试 → 兜底回复 + TTS 裁剪 |
 | 事后 | `rule_evaluator.py` | 场景探针检查 + forbidden phrases |
 
-违规检测覆盖：编造具体人物/竞赛/引语、承诺私人联系/代办、虚构真实经历、编造餐饮细节、报考预测、假设线下在场等。
+违规检测覆盖：编造具体人物/竞赛/引语、承诺私人联系/代办、虚构真实经历、编造餐饮细节、报考预测、假设线下在场、**编造快递点/假设宿舍位置**等。
 
 ### 地点查询（campus_directory）
 
 `boundary_guard.py` 加载 `knowledge/campus_directory.json` 作为事实基准：
+- `safe_reply()` 前置拦截：对 `location_query` 类问题，`match_location_query()` 单条目命中时直接返回确定性短答；多条目命中或含非地点追问词时交给模型
 - 后置验证：模型回复后，guard 检查回复中的地点/电话是否编造
 - 覆盖 23 个校园地点：学院办公室、行政楼、医务室、心理咨询、食堂、快递、超市等
-- 单条目明确命中时直接返回确定性短答
-- 多条目同时命中（如"学生证和校园卡在哪"）或含有非地点追问词（如"需要带什么证件"）时，交给模型综合回答
-- 未覆盖地点自动走 LLM 或引导咨询辅导员
+- 对成绩单打印终端和快递查询有专属模板，快递回复不假设用户宿舍位置
+
+### 快递回复规则
+
+问到快递站、包裹、取件时：
+- 列出知识库中明确的快递点
+- 不假设用户住在哪栋宿舍，不说"你楼下快递站""寝室楼下那个柜子"
+- 外卖柜不是快递点，不能按快递处理
+- 提醒以短信、取件码或快递平台通知为准
+
+### 收尾/行动确认（action_commitment）
+
+用户说"我先去办事""下次聊""先去试试""转转""逛逛"等收尾或行动确认时，`is_action_commitment()` 优先识别并走短句安全回复，防止被地点关键词误判为 FAQ，也避免模型编造校园景物、路线或现场状态。
 
 ## 核心理念
 

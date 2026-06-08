@@ -49,6 +49,17 @@ class SkillBoundariesTest(unittest.TestCase):
         self.assertIn("不能编造具体菜品口味、排行、价格、窗口位置或营业时间", self.skill)
         self.assertIn("不要记忆", self.skill)
 
+    def test_express_answers_do_not_use_takeout_lockers_or_assume_dorm(self):
+        self.assertIn("快递回答规则", self.skill)
+        self.assertIn("外卖柜不是快递点", self.skill)
+        self.assertIn("不能按“宿舍楼下”判断", self.skill)
+
+    def test_fact_errand_replies_do_not_invent_campus_scenery_or_routes(self):
+        self.assertIn("事实型办事回复规则", self.skill)
+        self.assertIn("秋天银杏超美", self.skill)
+        self.assertIn("图书馆钟楼远远能看见", self.skill)
+        self.assertIn("进门右手边走", self.skill)
+
     def test_school_profile_uses_updated_official_figures(self):
         self.assertIn("开设34个本科招生专业", self.skill)
         self.assertIn("全日制本科生12300余名、研究生600余名", self.skill)

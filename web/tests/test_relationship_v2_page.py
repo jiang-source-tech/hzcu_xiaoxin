@@ -34,17 +34,34 @@ class RelationshipV2PageTest(unittest.TestCase):
             "用户 LLM",
             "小芯 LLM",
             "state-strip",
-            "renderViolation",
         ]
 
         for snippet in expected_snippets:
             with self.subTest(snippet=snippet):
                 self.assertIn(snippet, self.html)
 
-    def test_stage_mismatch_shows_expected_and_actual_values(self):
-        self.assertIn("期望阶段", self.html)
-        self.assertIn("实际阶段", self.html)
-        self.assertIn("formatViolationDetail", self.html)
+    def test_page_keeps_manual_review_context(self):
+        self.assertIn("manual-review", self.html)
+        self.assertIn("state-strip", self.html)
+
+    def test_page_does_not_render_system_judgement_panels(self):
+        removed_snippets = [
+            "formatViolationDetail",
+            "renderQualityPanel",
+            "quality-panel",
+            "quality_judge",
+            "updateSceneVerdict",
+            "rule_violations",
+            "probes",
+            "forbid_patterns",
+            "violations",
+            "day_summary",
+            "day-summary",
+        ]
+
+        for snippet in removed_snippets:
+            with self.subTest(snippet=snippet):
+                self.assertNotIn(snippet, self.html)
 
 
     def test_page_exposes_manual_review_and_flushes_final_stream_event(self):
@@ -106,8 +123,6 @@ class RelationshipV2PageTest(unittest.TestCase):
             "day-body",
             "turn_source",
             "formatTurnSource",
-            "day_summary",
-            "day-summary",
         ]
 
         for snippet in expected_snippets:
@@ -121,7 +136,6 @@ class RelationshipV2PageTest(unittest.TestCase):
             "memory_audit",
             "relationship_changes",
             "long_term_memories",
-            "audit_flags",
             "记忆审计",
         ]
 

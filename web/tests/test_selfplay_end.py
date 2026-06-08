@@ -214,8 +214,10 @@ class SelfplayEndTest(unittest.TestCase):
         self.assertIn("编造餐饮推荐", types)
         self.assertIn("假设线下在场", types)
 
-    def test_chat_uses_canteen_template_without_model_call(self):
-        fake_client = _FakeClient([])
+    def test_chat_builds_safe_canteen_reply_without_model_call(self):
+        fake_client = _FakeClient([
+            "秋天的银杏超美，图书馆钟楼远远能看见。[smile]",
+        ])
 
         with patch.object(app_module, "client", fake_client), \
              patch.object(app_module, "run_tool", return_value=""):
@@ -232,7 +234,99 @@ class SelfplayEndTest(unittest.TestCase):
         self.assertIn("北秀食堂", payload["reply"])
         self.assertIn("speech", payload)
         self.assertIn("石榴红餐厅", payload["reply"])
-        self.assertIn("不敢乱说", payload["reply"])
+        self.assertNotIn("食堂我知道个大概", payload["reply"])
+        self.assertNotIn("银杏", payload["reply"])
+        self.assertNotIn("钟楼", payload["reply"])
+        self.assertEqual(len(fake_client.calls), 0)
+
+    def test_chat_builds_safe_express_reply_without_model_call(self):
+        fake_client = _FakeClient([
+            "你楼下那个外卖柜也能收快递，直接去那里拿就行。[smile]",
+        ])
+
+        with patch.object(app_module, "client", fake_client), \
+             patch.object(app_module, "run_tool", return_value=""):
+            response = app_module.app.test_client().post(
+                "/api/chat",
+                json={
+                    "user_id": "test_express_template",
+                    "message": "小信，咱们宿舍楼下的快递站是哪边去啊？我有个包裹到了。",
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertIn("北校区求真楼菜鸟驿站", payload["reply"])
+        self.assertIn("南校区晨苑餐厅", payload["reply"])
+        self.assertIn("以短信、取件码或快递平台通知为准", payload["reply"])
+        self.assertNotIn("外卖柜", payload["reply"])
+        self.assertEqual(len(fake_client.calls), 0)
+
+    def test_chat_does_not_keyword_template_after_user_commits_to_plan(self):
+        fake_client = _FakeClient([
+            "行政楼往南校区进门右手边走，图书馆的钟楼远远就能看见。[smile]",
+        ])
+
+        with patch.object(app_module, "client", fake_client), \
+             patch.object(app_module, "run_tool", return_value=""):
+            response = app_module.app.test_client().post(
+                "/api/chat",
+                json={
+                    "user_id": "test_action_commitment_no_template",
+                    "message": "行，那我先去行政楼一楼试试那个终端，不行再去教学办问。谢了啊！",
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertIn("先去试试", payload["reply"])
+        self.assertNotIn("信电学院教学办公室（教学办）位于", payload["reply"])
+        self.assertNotIn("右手边", payload["reply"])
+        self.assertNotIn("钟楼", payload["reply"])
+        self.assertEqual(len(fake_client.calls), 0)
+
+    def test_chat_safe_goodbye_before_errand_without_model_call(self):
+        fake_client = _FakeClient([
+            "城院秋天的银杏超美，你一定会遇到美景。[wink]",
+        ])
+
+        with patch.object(app_module, "client", fake_client), \
+             patch.object(app_module, "run_tool", return_value=""):
+            response = app_module.app.test_client().post(
+                "/api/chat",
+                json={
+                    "user_id": "test_safe_errand_goodbye",
+                    "message": "好的，那我去办事了，谢谢小芯！等办完有空了一定去逛逛。下次聊～",
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertIn("先去忙", payload["reply"])
+        self.assertNotIn("银杏", payload["reply"])
+        self.assertNotIn("美景", payload["reply"])
+        self.assertEqual(len(fake_client.calls), 0)
+
+    def test_chat_safe_campus_wandering_after_task_without_model_call(self):
+        fake_client = _FakeClient([
+            "行政楼往南校区进门右手边走，图书馆的钟楼远远就能看见。[smile]",
+        ])
+
+        with patch.object(app_module, "client", fake_client), \
+             patch.object(app_module, "run_tool", return_value=""):
+            response = app_module.app.test_client().post(
+                "/api/chat",
+                json={
+                    "user_id": "test_safe_campus_wandering",
+                    "message": "哈哈，跑错路才能撞见银杏？那我还真得故意走错几次了。行政楼和图书馆都找到之后我再去校园里转转。",
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertIn("先去忙", payload["reply"])
+        self.assertNotIn("右手边", payload["reply"])
+        self.assertNotIn("钟楼", payload["reply"])
         self.assertEqual(len(fake_client.calls), 0)
 
     def test_chat_does_not_use_canteen_template_for_emotional_experience(self):

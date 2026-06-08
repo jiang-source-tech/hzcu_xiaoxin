@@ -130,7 +130,7 @@ python app.py
 
 ## 4. 正常聊天链路
 
-正常用户聊天走 `/api/chat`，v2 场景测试走 `chat_core()`。两者均采用**后置验证**架构。
+正常用户聊天走 `/api/chat`，v2 场景测试走 `chat_core()`。两者均采用“确定性事实 builder + 开放聊天后置验证”的混合架构。
 
 核心流程：
 
@@ -139,12 +139,12 @@ python app.py
   -> POST /api/chat
   -> build_system_prompt(user_id)
        SKILL.md + 记忆 + 成长快照 + 关系状态 + 简短口语规则
-  -> guard.build_location_context(user_msg)
-       匹配 campus_directory.json，将相关地点事实注入 system prompt
-       （如"学生事务服务中心位于行政楼302室"），并约束模型不要编造
-       不在事实中的建筑位置关系、交通方式和周边地标
+  -> guard.safe_reply(user_msg)
+       对食堂、快递、成绩单打印、校园地点、官方流程、收尾办事等事实/边界场景
+       用固定小芯句式 + 本地知识库事实直接组装回复，不调用模型
+       避免模型补写银杏、钟楼、路线、风景等知识库没有的内容
   -> DeepSeek chat.completions.create()
-       （始终调用模型，不在模型前拦截）
+       （仅 open_chat 等开放陪伴场景调用模型）
   -> 后置验证
        截断/碎片检查 → 重试
        越界检测（编造人物/地点/竞赛/餐饮/联系方式等）→ 重试
@@ -154,7 +154,7 @@ python app.py
   -> 返回 JSON
 ```
 
-> **架构变更（2026-06）**：guard 从"前置拦截"改为"后置验证"。之前 `template_reply()` 在调用模型前拦截命中关键词的消息，直接返回模板回复——导致回复像查询机器、丢失对话上下文、多事物问句只答一个。现在模型始终首发回复，但会先通过 `build_location_context()` 获得地点事实参考，从而既保持自然口吻又不编造位置关系。
+> **架构变更（2026-06）**：guard 不再把事实问题交给模型自由改写。事实型办事回复由 `safe_reply()` 程序化生成：事实只来自本地知识库，语气只来自固定小芯句式；模型只负责开放陪伴聊天，并在回复后接受越界检测。
 
 `chat_core()`（v2 场景测试用）额外支持 `history` 参数，传入同日对话历史让模型能理解追问上下文。
 
@@ -173,7 +173,7 @@ python app.py
 关键文件：
 
 - `web/app.py`：`chat()`、`build_system_prompt()`、`record_chat_reply()`。
-- `web/boundary_guard.py`：`template_reply()`、`is_boundary_violating_reply()`、`fallback_reply()`。
+- `web/boundary_guard.py`：`safe_reply()`、`template_reply()`、`is_boundary_violating_reply()`、`fallback_reply()`。
 
 ## 5. `/test` 自对话测试链路
 
@@ -186,13 +186,12 @@ python app.py
 - `/test` 固定使用 `user_id="selfplay"`，因此记忆上下文可能不同。
 - `/test` 额外多了一个“模拟用户模型”，由 `STUDENT_PERSONAS` 和前端开场白驱动。
 
-`/api/selfplay/turn` 一轮包含两步（与主链路一致，均采用后置验证）：
+`/api/selfplay/turn` 一轮包含两步（与主链路一致，先尝试确定性 `safe_reply()`，开放聊天再走模型与后置验证）：
 
 ```text
 1. 小芯回复
-   build_system_prompt("selfplay")
-   + 当前对话记录
-   + 用户本轮发言
+   safe_reply(user_msg) 命中则直接返回
+   否则 build_system_prompt("selfplay") + 当前对话记录 + 用户本轮发言
    -> 后置验证（碎片检测/越界检测/重试/兜底）
 
 2. 模拟用户回复
@@ -360,11 +359,12 @@ SKILL.md
 
 - 清理模型泄露的推理标记。
 - 将带表情的回复转为适合 TTS 的短文本。
-- **事前事实注入**：`build_location_context()` 将匹配的 `campus_directory.json` 地点事实注入 system prompt，约束模型不要编造不在事实中的建筑位置关系、交通方式和周边地标。
+- **确定性安全回复**：`safe_reply()` 对事实型办事、快递、食堂、成绩单打印、官方流程、收尾办事等场景直接组装小芯回复，不调用模型。
+- **事前事实注入**：`build_location_context()` 仅用于未被 `safe_reply()` 覆盖但仍匹配地点事实的开放回复，约束模型不要编造不在事实中的建筑位置关系、交通方式和周边地标。
 - **后置验证**：模型回复后检测越界表达，触发重试或纠偏。
 - 发现碎片回复、越界回复后触发重试 → fallback。
 
-> **架构要点**：guard 不再在模型前拦截。`template_reply()` 和 `classify_message()` 仍然存在并维护，但仅在以下场景使用：(1) 模型多次重试仍越界时的 `fallback_reply()` 兜底；(2) 重试时通过 `classify_message()` 生成针对性的 `retry_instruction()`。
+> **架构要点**：事实型办事回复不交给模型写。`safe_reply()` 是前置确定性 builder；`template_reply()` 是硬边界和 fallback 文案来源；`classify_message()` 同时服务于 builder、fallback 和重试指令。
 
 ### 8.1 地点事实注入（`build_location_context`）
 
@@ -377,11 +377,11 @@ SKILL.md
 - 校园卡服务中心在图书馆B513
 ```
 
-与旧 `template_reply` 的区别：模型仍然用自己的语言组织回复，保持学长口吻和对话连续性，但手上有确定事实作为依据，不会凭空编造位置关系。
+注意：对高风险或事实型办事场景，优先使用 `safe_reply()`，不让模型用自己的语言补写校园氛围、路线或地标。`build_location_context()` 只作为未命中 builder 时的辅助约束。
 
 ### 8.2 用户问题分类
 
-`classify_message(user_msg)` 用于后置验证阶段（重试纠偏指令生成），把用户问题分为：
+`classify_message(user_msg)` 用于确定性 builder、后置验证和重试纠偏指令生成，把用户问题分为：
 
 - `crisis`：危机场景，如”不想活””撑不住”。
 - `admissions_guidance`：高三报考、志愿、录取概率、专业适合度。
@@ -394,13 +394,25 @@ SKILL.md
 - `location_query`：校园地点查询。`match_location_query()` 内部做了两项优化：
   - **多条目检测**：当多个地点条目同时命中且得分接近时返回 `None`，交给模型综合回答（避免”学生证和校园卡在哪”只答一个）。
   - **非地点追问词过滤**：消息含”带什么””证件””流程””材料”等追问词时不拦截，交给模型处理（避免”需要带什么证件”重复返回地址）。
+- `action_commitment`：用户已经决定下一步、准备去办事或自然收尾。`is_action_commitment()` 通过收尾标记词（”先去””先试””谢了””我先””找到之后””转转””逛逛”等）识别，非问句结尾时优先拦截，防止被地点关键词抢成 FAQ。走短句安全回应，避免模型编造景物或路线。
 - `open_chat`：普通聊天。
 
-### 8.3 兜底回复
+### 8.3 确定性安全回复（`safe_reply`）
+
+`safe_reply(user_msg)` 是事实型回复的主入口，在 `chat_core()`、`/api/chat` 和 `/api/selfplay/turn` 三条链路中均优先调用。它使用固定小芯句式拼接本地知识库事实，不调用 LLM，因此不能新增知识库里没有的银杏、钟楼、右手边路线、风景、人流或现场状态。覆盖：
+
+- **收尾/行动确认**（`action_commitment`）：”先去忙””下次聊””我先试试”等，用短句安全收束，不编造成景物或现场状态。
+- **食堂位置**（`canteen_locations`）：列出 5 个餐饮点，提醒以校园地图或服务信息为准。
+- **食堂推荐**（`canteen_recommendation`）：只输出公开描述，不乱封”最好吃”。
+- **校园地点查询**（`location_query`）：命中 `campus_directory.json` 单条目时给出确定性短答；对成绩单打印和快递查询有专属模板。
+- **官方流程、联系方式、报考、危机、成绩隐私、竞赛资源**等硬边界：委托给 `template_reply()` 输出安全文案。
+- **快递点**：列出已知快递点，提醒以短信/取件码/快递平台通知为准；不假设用户宿舍位置，不把外卖柜说成快递点。
+
+### 8.4 兜底回复
 
 `template_reply(user_msg)` 和 `fallback_reply(user_msg)` 在模型多次重试仍越界时使用，作为最后的安全网。覆盖场景包括危机引导、成绩查询拒绝、官方流程指引、联系方式拒绝、竞赛资源边界、报考预测拒绝、食堂细节边界等。正常情况下模型首发回复即可，这些模板只在异常时触发。
 
-### 8.4 回复违规检测
+### 8.5 回复违规检测
 
 `detect_reply_violations(user_msg, reply)` 检测模型输出中的常见越界：
 
@@ -416,15 +428,14 @@ SKILL.md
 - `编造具体人物`：说“往届有个 XX 学生”“张学长”“拿奖的关键学生”等。
 - `编造人物引语`：给虚构人物编造引语，如“他说秘诀是…”“她的经验是…”。
 - `编造对话场景`：说“上次有个同学跟我说”“之前有个新生问我”等。
-- `编造竞赛信息`：提到不在知识库已知竞赛列表中的竞赛名称。
+- `编造竞赛信息`：提到不在知识库已知竞赛列表中的竞赛名称。`_check_fabricated_competitions()` 做了两项优化：(1) 跳过含通用引导语（"学院和竞赛""了解竞赛""关注竞赛""咨询竞赛"等）的句子，避免"可以多了解竞赛""关注竞赛通知"这类正常回复被误报；(2) 仅对形如「XX竞赛」「XX比赛」的专名模式进行已知竞赛名白名单校验。
+- `编造快递点/假设宿舍位置`：在快递语境下检测"外卖柜""你楼下""宿舍楼下""寝室楼下"等词，过滤掉自我纠正句式（如"不能按宿舍楼下判断"），仅对确实假设用户位置的回复标记违规。
 
-检测函数分为三个专用辅助函数：`_check_fabricated_people()`、`_check_fabricated_quotes_and_stories()`、`_check_fabricated_competitions()`。
+检测函数分为四个专用辅助函数：`_check_fabricated_people()`、`_check_fabricated_quotes_and_stories()`、`_check_fabricated_competitions()`，以及内联的快递位置检测逻辑。
 
 如果首次模型回复越界，后端会追加 `retry_instruction()` 再生成一次；如果仍越界，则使用 `fallback_reply()`。`retry_instruction()` 会根据违规类型给出针对性的纠正提示。
 
-如果首次模型回复越界，后端会追加 `retry_instruction()` 再生成一次；如果仍越界，则使用 `fallback_reply()`。
-
-### 8.5 当前边界测试覆盖
+### 8.6 当前边界测试覆盖
 
 当前测试不只验证“有没有打分”，而是尽量把高风险情形做成可回归的违规检测。覆盖重点如下：
 
@@ -595,7 +606,7 @@ python -m pytest web\tests -q
 3. 在 `retry_instruction()` 中补针对性纠偏提示，必要时补 `fallback_reply()` 兜底。
 4. 运行 `python -m pytest web/tests -q`。
 
-> 注意：`template_reply()` 仅作为 fallback 使用，正常流程中模型首发回复、guard 后置验证。
+> 注意：事实型办事回复优先改 `safe_reply()`。不要把模板交给 LLM 自由改写；模型容易补写知识库里没有的校园景物、路线和地标。`template_reply()` 主要作为硬边界和 fallback 文案来源。
 
 示例边界：
 
@@ -605,6 +616,7 @@ python -m pytest web\tests -q
 - 不能预测录取概率或就业保证。
 - 不能把用户随口吃饭、报考犹豫等内容存成长期记忆。
 - 不能把实时天气、交通、快递投递点说成确定事实。
+- 快递回复只能列出知识库里的快递点；外卖柜不是快递点，不能按“宿舍楼下”推断用户取件位置。
 
 ### 13.3 修改小芯人格
 

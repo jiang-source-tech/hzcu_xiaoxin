@@ -136,6 +136,15 @@ class BoundaryGuardTest(unittest.TestCase):
         types = {item["type"] for item in violations}
         self.assertIn("报考预测或代做选择", types)
 
+    def test_reply_violation_detector_allows_generic_competition_public_notice(self):
+        violations = guard.detect_reply_violations(
+            "那你能不能帮我联系上届学长，给我他们的资料？",
+            "这个我不能给具体联系方式，也不能替你联系个人。想找队友或问资料，建议看学院和竞赛组的公开通知，或者问竞赛负责老师。[think]",
+        )
+
+        types = {item["type"] for item in violations}
+        self.assertNotIn("编造竞赛信息", types)
+
     def test_reply_violation_detector_catches_fake_student_experience(self):
         violations = guard.detect_reply_violations(
             "我刚进班有点尴尬，怎么办？",
@@ -240,6 +249,34 @@ class BoundaryGuardTest(unittest.TestCase):
         reply = guard.template_reply("我要取快递")
         self.assertIsNotNone(reply)
         self.assertIn("菜鸟", reply)
+        self.assertIn("快递", reply)
+        self.assertNotIn("外卖柜", reply)
+        self.assertNotIn("每个宿舍楼", reply)
+        self.assertNotIn("宿舍对应", reply)
+
+    def test_location_query_express_pickup_with_dorm_wording(self):
+        reply = guard.template_reply("小信，咱们宿舍楼下的快递站是哪边去啊？我有个包裹到了。")
+        self.assertIsNotNone(reply)
+        self.assertIn("北校区求真楼菜鸟驿站", reply)
+        self.assertIn("南校区晨苑餐厅", reply)
+        self.assertIn("以短信、取件码或快递平台通知为准", reply)
+        self.assertNotIn("外卖柜", reply)
+
+    def test_express_reply_cannot_assume_dorm_or_use_takeout_locker(self):
+        violations = guard.detect_reply_violations(
+            "小信，咱们宿舍楼下的快递站是哪边去啊？我有个包裹到了。",
+            "南校区的话，你楼下有没有看到带格子的外卖柜？那个也能收快递。",
+        )
+
+        types = {item["type"] for item in violations}
+        self.assertIn("编造快递点或假设用户宿舍位置", types)
+
+        short_violations = guard.detect_reply_violations(
+            "小信，快递站在哪？",
+            "南校区的话，你楼下那个外卖柜也能收快递。",
+        )
+        short_types = {item["type"] for item in short_violations}
+        self.assertIn("编造快递点或假设用户宿舍位置", short_types)
 
     def test_location_query_print_transcript_not_score_check(self):
         """「去哪打印成绩单」→ 匹配自助打印，不会被误判为查分"""
@@ -247,6 +284,37 @@ class BoundaryGuardTest(unittest.TestCase):
         self.assertIsNotNone(reply)
         self.assertIn("打印", reply)
         self.assertNotIn("查不了", reply)  # 不是 private_records 的回复
+
+    def test_action_commitment_gets_safe_short_reply(self):
+        """用户已经决定下一步或收尾时，不应交给模型自由发挥校园景物"""
+        message = "行，那我先去行政楼一楼试试那个终端，不行再去教学办问。谢了啊！"
+        self.assertEqual(guard.classify_message(message), "action_commitment")
+        self.assertIsNone(guard.template_reply(message))
+        reply = guard.safe_reply(message)
+        self.assertIsNotNone(reply)
+        self.assertIn("先去试试", reply)
+        self.assertNotIn("银杏", reply)
+        self.assertNotIn("钟楼", reply)
+        self.assertNotIn("右手边", reply)
+
+    def test_goodbye_before_errand_gets_safe_short_reply(self):
+        message = "好的，那我去办事了，谢谢小芯！等办完有空了一定去逛逛。下次聊～"
+        self.assertEqual(guard.classify_message(message), "action_commitment")
+        reply = guard.safe_reply(message)
+        self.assertIsNotNone(reply)
+        self.assertIn("先去忙", reply)
+        self.assertNotIn("银杏", reply)
+        self.assertNotIn("风景", reply)
+        self.assertNotIn("超美", reply)
+
+    def test_campus_wandering_after_task_gets_safe_short_reply(self):
+        message = "哈哈，跑错路才能撞见银杏？那我还真得故意走错几次了。行政楼和图书馆都找到之后我再去校园里转转。"
+        self.assertEqual(guard.classify_message(message), "action_commitment")
+        reply = guard.safe_reply(message)
+        self.assertIsNotNone(reply)
+        self.assertIn("先去忙", reply)
+        self.assertNotIn("右手边", reply)
+        self.assertNotIn("钟楼", reply)
 
     def test_non_location_query_goes_to_llm(self):
         """普通聊天不应触发地点模板"""
