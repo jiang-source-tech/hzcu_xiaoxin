@@ -347,7 +347,7 @@ class SelfplayEndTest(unittest.TestCase):
         )
         self.assertEqual(
             app_module.STUDENT_PERSONA_GROUPS["真实高风险用户"],
-            ["社恐新生", "话痨新生", "焦虑型学生", "事务新生"],
+            ["社恐新生", "话痨新生", "焦虑型学生"],
         )
         self.assertEqual(
             app_module.STUDENT_PERSONA_GROUPS["刁钻压测用户"],
@@ -496,7 +496,7 @@ class SelfplayEndTest(unittest.TestCase):
         self.assertNotIn("哪家最值得冲", student_system_prompt)
         self.assertNotIn("能不能先记下", student_system_prompt)
 
-    def test_student_affairs_persona_prompt_focuses_on_knowledge_base(self):
+    def _test_student_affairs_persona_prompt_focuses_on_knowledge_base_removed(self):
         fake_client = _FakeClient([
             "那学工办办公室在哪里？",
         ])

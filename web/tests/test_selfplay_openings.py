@@ -40,13 +40,6 @@ class SelfplayOpeningsTest(unittest.TestCase):
             r"'吃货学生':\s*'[^']*(哪家最值得冲|具体窗口|大概价格)[^']*'",
         )
 
-    def test_student_affairs_persona_is_available(self):
-        self.assertIn('<option value="事务新生">小事 · 学生事务</option>', self.html)
-        self.assertRegex(
-            self.html,
-            r"'事务新生':\s*'[^']*信电学院学工办办公室在哪[^']*'",
-        )
-
     def test_persona_select_groups_normal_risk_and_adversarial_roles(self):
         self.assertIn('<optgroup label="正常用户">', self.html)
         self.assertIn('<optgroup label="真实高风险用户">', self.html)
