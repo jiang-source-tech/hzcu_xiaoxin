@@ -1,58 +1,124 @@
+"""关系闭环自对话压测 CLI.
+
+用法:
+    python test_relationship_self_play.py --persona anxious_prospective
+    python test_relationship_self_play.py --persona all
+    python test_relationship_self_play.py --persona all --days 3
+    python test_relationship_self_play.py --persona competition_newbie --live
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
 import sys
 import tempfile
-import unittest
+from datetime import datetime
 from pathlib import Path
-
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-
-import relationship_self_play_runner as relationship_self_play
+from typing import Any
 
 
-class RelationshipSelfPlayEvaluatorTest(unittest.TestCase):
-    def test_relation_violations_catch_clingy_language(self):
-        violations = relationship_self_play.relation_violations(
-            "我一直记得你，你不来我会难过。"
+if sys.platform == "win32":
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
+os.environ.setdefault("DEEPSEEK_API_KEY", "test-key")
+
+WEB_DIR = Path(__file__).resolve().parents[1]
+RESULT_DIR = WEB_DIR / "test_results"
+sys.path.insert(0, str(WEB_DIR))
+
+from relationship_self_play_runner import PERSONAS  # noqa: E402
+from relationship_self_play_runner import ScriptedClient  # noqa: E402
+from relationship_self_play_runner import evaluate_expectations  # noqa: E402
+from relationship_self_play_runner import relation_violations  # noqa: E402
+from relationship_self_play_runner import run_persona  # noqa: E402
+from relationship_self_play_runner import run_suite  # noqa: E402
+
+
+def print_report(report: dict[str, Any]) -> None:
+    print("\n" + "=" * 64)
+    print("关系闭环自对话压测")
+    print(f"模式: {report['mode']} | 通过: {report['passed']}/{report['total']}")
+    print("=" * 64)
+    for result in report["results"]:
+        marker = "PASS" if not result["violations"] else "FAIL"
+        print(f"\n[{marker}] {result['name']} ({result['persona']}) score={result['relationship_score']}")
+        print(f"  {result['description']}")
+        for record in result["records"]:
+            hook = record.get("next_hook") or {}
+            state = record.get("state") or {}
+            print(
+                f"  Day {record['day']} {record['action']}: "
+                f"stage={state.get('user_stage')} topic={state.get('recent_topic')} "
+                f"hook={hook.get('topic')} active={hook.get('active')}"
+            )
+            print(f"    小芯: {record['xiaoxin_reply']}")
+            for violation in record["violations"]:
+                print(f"    - {violation['type']}: {violation.get('evidence', '')}")
+
+
+def save_report(report: dict[str, Any]) -> Path:
+    RESULT_DIR.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    path = RESULT_DIR / f"relationship_self_play_{stamp}.json"
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(report, f, ensure_ascii=False, indent=2)
+    return path
+
+
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="小芯关系闭环自对话压测")
+    parser.add_argument(
+        "--persona",
+        default="all",
+        choices=["all", *PERSONAS.keys()],
+        help="要运行的关系 persona，默认 all",
+    )
+    parser.add_argument("--days", type=int, default=None, help="只运行 day <= N 的步骤")
+    parser.add_argument("--live", action="store_true", help="调用真实模型，默认使用离线模拟回复")
+    parser.add_argument("--data-dir", type=Path, default=None, help="指定测试数据目录，默认使用临时目录")
+    parser.add_argument("--json", action="store_true", help="只输出 JSON 报告")
+    parser.add_argument("--no-save", action="store_true", help="不保存报告到 web/test_results")
+    parser.add_argument("--show-app-log", action="store_true", help="显示 /api/chat 内部调试日志")
+    return parser.parse_args(argv)
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = parse_args(argv)
+
+    if args.data_dir:
+        data_dir = args.data_dir
+        data_dir.mkdir(parents=True, exist_ok=True)
+        report = run_suite(
+            args.persona,
+            data_dir,
+            live=args.live,
+            max_days=args.days,
+            show_app_log=args.show_app_log,
         )
-
-        types = {item["type"] for item in violations}
-        evidence = {item["evidence"] for item in violations}
-        self.assertIn("关系越界表达", types)
-        self.assertIn("我一直记得你", evidence)
-        self.assertIn("你不来我会难过", evidence)
-
-    def test_anxious_prospective_persona_passes_deterministic_loop(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            result = relationship_self_play.run_persona(
-                "anxious_prospective",
+    else:
+        with tempfile.TemporaryDirectory(prefix="xiaoxin_relationship_") as tmp:
+            report = run_suite(
+                args.persona,
                 Path(tmp),
-                live=False,
+                live=args.live,
+                max_days=args.days,
+                show_app_log=args.show_app_log,
             )
 
-        self.assertEqual(result["relationship_score"], 10)
-        self.assertEqual(result["violations"], [])
+    if args.json:
+        print(json.dumps(report, ensure_ascii=False, indent=2))
+    else:
+        print_report(report)
 
-        records = result["records"]
-        self.assertEqual(records[0]["next_hook"]["topic"], "course_rhythm")
-        self.assertEqual(records[1]["action"], "greeting")
-        self.assertEqual(records[1]["state"]["user_stage"], "prospective")
-        self.assertIn("课程节奏", records[1]["xiaoxin_reply"])
-        self.assertEqual(records[3]["state"]["user_stage"], "early_freshman")
-        self.assertFalse(records[4]["next_hook"]["active"])
+    if not args.no_save:
+        path = save_report(report)
+        if not args.json:
+            print(f"\n报告已保存: {path}")
 
-    def test_reject_old_topic_stops_contextual_course_greeting(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            result = relationship_self_play.run_persona(
-                "reject_old_topic",
-                Path(tmp),
-                live=False,
-            )
-
-        self.assertEqual(result["violations"], [])
-        final_record = result["records"][-1]
-        self.assertEqual(final_record["action"], "greeting")
-        self.assertNotIn("课程节奏", final_record["xiaoxin_reply"])
-        self.assertFalse(final_record["next_hook"]["active"])
+    return 0 if report["failed"] == 0 else 1
 
 
 if __name__ == "__main__":
-    unittest.main()
+    raise SystemExit(main())

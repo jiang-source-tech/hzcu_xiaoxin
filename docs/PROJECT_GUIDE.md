@@ -40,24 +40,33 @@ hzcu_xiaoxin/
     ├── user_simulator.py
     ├── rule_evaluator.py
     ├── quality_judge.py
-    ├── test_relationship_v2.py
-    ├── test_self_play.py
+    ├── relationship_self_play_runner.py
     ├── scenes/
     │   ├── anxious_prospective.json
     │   ├── competition_newbie.json
     │   ├── reject_old_topic.json
     │   ├── boundary_probe.json
-    │   └── socially_anxious.json
+    │   ├── socially_anxious.json
+    │   ├── campus_navigation.json
+    │   ├── campus_life_services.json
+    │   └── admin_boundary_mix.json
     ├── knowledge/
     │   ├── campus_life.json
-    │   └── student_affairs_qa.json
+    │   ├── student_affairs_qa.json
+    │   └── campus_directory.json
     ├── static/
     │   ├── index.html
     │   ├── test.html
     │   └── relationship-v2-test.html
     ├── tests/
+    │   ├── test_boundary_guard.py
+    │   ├── test_scene_runner.py
+    │   ├── test_self_play.py
+    │   ├── test_relationship_v2.py
+    │   ├── test_relationship_self_play.py
+    │   └── ...
     ├── requirements.txt
-    └── test_self_play.py
+    └── test_results/
 ```
 
 主要职责：
@@ -75,6 +84,7 @@ hzcu_xiaoxin/
 - `web/tests/`：单元测试和回归测试。
 - `web/knowledge/campus_life.json`：结构化校园生活知识，用于食堂、宿舍、交通、快递、穿衣等可确定场景。
 - `web/knowledge/student_affairs_qa.json`：学生事务问答知识，用于命中度较高的官方流程类问题；回答后仍提示用户办事前向辅导员或官方渠道确认。
+- `web/knowledge/campus_directory.json`：校园办事地点指南，覆盖学院办公室、行政楼、医务室、心理咨询、食堂、快递、超市等 23 个地点。`boundary_guard.py` 通过关键词匹配提供确定性短答，不走 LLM。
 
 ## 3. 运行环境
 
@@ -249,7 +259,7 @@ python app.py
 - 页面：`GET /relationship-test`
 - 场景列表：`GET /api/v2/relationship-selfplay/scenes`
 - 运行测试：`POST /api/v2/relationship-selfplay/run`
-- CLI：`python test_relationship_v2.py`
+- CLI：`python tests/test_relationship_v2.py`
 
 相关文件：
 
@@ -362,6 +372,7 @@ SKILL.md
 - `competition_resources`：竞赛资源、源文件、队长、学长联系方式。
 - `canteen_locations`：食堂位置概览。
 - `canteen_recommendation`：食堂推荐、价格、窗口、营业时间等。
+- `location_query`：校园地点查询（学工办、医务室、快递点等），命中 `campus_directory.json` 后直接返回确定性短答。
 - `open_chat`：普通聊天，不走模板。
 
 ### 8.2 模板回复

@@ -16,12 +16,65 @@ EXPRESSION_PATTERN = r"\[(smile|cheer|think|proud|wink|wave|surprise|love|sweat|
 REASONING_CLOSE_MARKERS = ("[/think]", "[/思考]", "</think>", "</思考>")
 KNOWLEDGE_DIR = Path(__file__).resolve().parent / "knowledge"
 CAMPUS_LIFE_FILE = KNOWLEDGE_DIR / "campus_life.json"
+CAMPUS_DIRECTORY_FILE = KNOWLEDGE_DIR / "campus_directory.json"
 
 
 @lru_cache(maxsize=1)
 def load_campus_life() -> dict:
     with open(CAMPUS_LIFE_FILE, "r", encoding="utf-8") as f:
         return json.load(f)
+
+
+@lru_cache(maxsize=1)
+def load_campus_directory() -> dict:
+    if not CAMPUS_DIRECTORY_FILE.exists():
+        return {"entries": [], "fallback_response": "这个我不太确定，你可以问问辅导员或者去学院官网查一下。"}
+    with open(CAMPUS_DIRECTORY_FILE, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def match_location_query(user_msg: str) -> str | None:
+    """匹配 campus_directory.json 中的地点查询，返回答案或 None。"""
+    data = load_campus_directory()
+    entries = data.get("entries", [])
+    if not entries:
+        return None
+
+    # 地点疑问词
+    location_markers = ("在哪", "哪里", "怎么走", "怎么去", "位置", "在哪儿",
+                        "在哪", "去哪", "去哪个", "电话多少", "联系方式",
+                        "开放时间", "几点开", "几点关", "怎么预约",
+                        "如何预约", "想去", "要去", "补办", "报修")
+    has_location_marker = any(m in user_msg for m in location_markers)
+
+    best = None
+    best_score = 0.0
+
+    for entry in entries:
+        score = 0.0
+        keywords = entry.get("search_keywords", []) + entry.get("aliases", [])
+        for kw in keywords:
+            if kw in user_msg:
+                # 长关键词匹配权重更高
+                score += 1.0 + len(kw) * 0.1
+
+        # 问题文本与用户消息的 2-gram 重叠作为加成（处理「打印成绩单」）
+        q_clean = entry.get("question", "").replace("？", "").replace("（", "").replace("）", "")
+        q_bigrams = {q_clean[i:i+2] for i in range(len(q_clean)-1)}
+        msg_bigrams = {user_msg[i:i+2] for i in range(len(user_msg)-1)}
+        overlap = q_bigrams & msg_bigrams
+        score += len(overlap) * 0.2
+
+        if score > best_score:
+            best_score = score
+            best = entry
+
+    # 有地点疑问词时阈值低，没有时要求至少匹配 2 个关键词（加权后约 >=2）
+    threshold = 0.5 if has_location_marker else 2.0
+    if best and best_score >= threshold:
+        return best.get("answer", "")
+
+    return None
 
 
 def format_canteen_locations() -> str:
@@ -133,6 +186,37 @@ def classify_message(user_msg: str) -> str:
     if admissions_context:
         return "admissions_guidance"
 
+    # 食堂/餐饮优先于通用地点查询，保留原有 canteen 模板逻辑
+    food_context = contains_any(text, ("食堂", "餐厅", "夜宵", "吃饭", "哪里吃", "卤肉饭", "肉肉饭", "煎包", "瘦肉丸", "麻辣烫", "香锅"))
+    if food_context:
+        canteen_experience_context = contains_any(text, (
+            "我知道在哪", "知道在哪了", "已经到了", "到食堂了", "好吵", "太吵", "人好多", "人很多",
+            "有点慌", "紧张", "害怕", "不舒服", "是不是正常", "有点尴尬",
+        ))
+        if canteen_experience_context:
+            return "open_chat"
+
+        canteen_location_question = contains_any(text, (
+            "都在哪里", "有哪些", "哪里吃", "在哪儿", "在哪里", "位置", "几号楼", "几层",
+            "食堂在哪", "餐厅在哪", "怎么去食堂",
+        ))
+        if canteen_location_question:
+            return "canteen_locations"
+        if contains_any(text, ("最好吃", "推荐", "哪家好", "哪家强", "贵", "价格", "菜价", "窗口", "营业", "几点", "够味", "好吃")):
+            return "canteen_recommendation"
+
+    # 通用地点查询（食堂之外的地点），优先于 private_records
+    location_markers = ("在哪", "哪里", "怎么走", "怎么去", "位置", "在哪儿",
+                        "在哪", "去哪", "去哪个", "电话多少", "联系方式",
+                        "开放时间", "几点开", "几点关", "怎么预约",
+                        "如何预约", "想去", "要去", "补办", "报修", "怎么去")
+    has_marker = any(m in text for m in location_markers)
+    if has_marker:
+        if match_location_query(text):
+            return "location_query"
+    elif match_location_query(text):
+        return "location_query"
+
     if contains_any(text, ("成绩", "查分", "绩点", "期末分", "考试分")):
         return "private_records"
 
@@ -151,24 +235,6 @@ def classify_message(user_msg: str) -> str:
     competition_resource = contains_any(text, ("联系方式", "联系学长", "联系学姐", "帮我联系", "上届", "资料", "源文件", "代码", "驱动板", "实物", "队长"))
     if competition_context and competition_resource:
         return "competition_resources"
-
-    food_context = contains_any(text, ("食堂", "餐厅", "夜宵", "吃饭", "哪里吃", "卤肉饭", "肉肉饭", "煎包", "瘦肉丸", "麻辣烫", "香锅"))
-    if food_context:
-        canteen_experience_context = contains_any(text, (
-            "我知道在哪", "知道在哪了", "已经到了", "到食堂了", "好吵", "太吵", "人好多", "人很多",
-            "有点慌", "紧张", "害怕", "不舒服", "是不是正常", "有点尴尬",
-        ))
-        if canteen_experience_context:
-            return "open_chat"
-
-        canteen_location_question = contains_any(text, (
-            "都在哪里", "有哪些", "哪里吃", "在哪儿", "在哪里", "位置", "几号楼", "几层",
-            "食堂在哪", "餐厅在哪", "怎么去食堂",
-        ))
-        if canteen_location_question:
-            return "canteen_locations"
-        if contains_any(text, ("最好吃", "推荐", "哪家好", "哪家强", "贵", "价格", "菜价", "窗口", "营业", "几点", "够味", "好吃")):
-            return "canteen_recommendation"
 
     return "open_chat"
 
@@ -225,6 +291,12 @@ def template_reply(user_msg: str) -> str | None:
             "听起来你现在真的很难受，这个不能只靠我陪你扛。请马上联系身边同学、辅导员、家人，"
             "或者学校心理支持渠道；如果有伤害自己的冲动，先去人多安全的地方并立刻求助。[sad]"
         )
+
+    if category == "location_query":
+        answer = match_location_query(user_msg)
+        if answer:
+            return f"{answer}[think]"
+        return None
 
     return None
 

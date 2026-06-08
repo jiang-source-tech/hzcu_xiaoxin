@@ -189,6 +189,88 @@ class BoundaryGuardTest(unittest.TestCase):
         types = {item["type"] for item in violations}
         self.assertIn("承诺代办获取信息", types)
 
+    # ── campus_directory 地点查询测试 ─────────────────────────────────
+
+    def test_location_query_matches_xuegong_office(self):
+        """「学工办在哪」→ 匹配到学生工作办公室，返回理五B307"""
+        reply = guard.template_reply("学工办在哪？")
+        self.assertIsNotNone(reply)
+        self.assertIn("理五", reply)
+        self.assertIn("B307", reply)
+
+    def test_location_query_matches_jiaoxue_office(self):
+        """「教学办在哪」→ 匹配到教学办公室"""
+        reply = guard.template_reply("教学办在哪？")
+        self.assertIsNotNone(reply)
+        self.assertIn("302", reply)
+
+    def test_location_query_fudaoyuan_maps_to_xuegong(self):
+        """「辅导员在哪办公」→ 关键词「辅导员」关联到学工办"""
+        reply = guard.template_reply("辅导员在哪里办公？")
+        self.assertIsNotNone(reply)
+        self.assertIn("学工办", reply)
+
+    def test_location_query_campus_card_reissue(self):
+        """「校园卡去哪补办」→ 匹配到校园卡服务中心"""
+        reply = guard.template_reply("校园卡去哪补办？")
+        self.assertIsNotNone(reply)
+        self.assertIn("图书馆", reply)
+
+    def test_location_query_clinic_synonym(self):
+        """「校医院在哪」→ 同义词匹配到校医务室"""
+        reply = guard.template_reply("校医院在哪？")
+        self.assertIsNotNone(reply)
+        self.assertIn("医务室", reply)
+
+    def test_location_query_psychology_appointment(self):
+        """「心理咨询怎么预约」→ 匹配到心理咨询中心"""
+        reply = guard.template_reply("心理咨询怎么预约？")
+        self.assertIsNotNone(reply)
+        self.assertIn("理四", reply)
+        self.assertIn("114", reply)
+
+    def test_location_query_dorm_repair(self):
+        """「宿舍东西坏了怎么报修」→ 匹配到报修"""
+        reply = guard.template_reply("宿舍东西坏了怎么报修？")
+        self.assertIsNotNone(reply)
+        self.assertIn("报修", reply)
+
+    def test_location_query_express_pickup(self):
+        """「我要取快递」→ 关键词强匹配到快递点（无地点疑问词但分数足够）"""
+        reply = guard.template_reply("我要取快递")
+        self.assertIsNotNone(reply)
+        self.assertIn("菜鸟", reply)
+
+    def test_location_query_print_transcript_not_score_check(self):
+        """「去哪打印成绩单」→ 匹配自助打印，不会被误判为查分"""
+        reply = guard.template_reply("去哪打印成绩单？")
+        self.assertIsNotNone(reply)
+        self.assertIn("打印", reply)
+        self.assertNotIn("查不了", reply)  # 不是 private_records 的回复
+
+    def test_non_location_query_goes_to_llm(self):
+        """普通聊天不应触发地点模板"""
+        self.assertIsNone(guard.template_reply("今天天气真好"))
+        self.assertIsNone(guard.template_reply("C语言好难啊"))
+        self.assertIsNone(guard.template_reply("我想参加电子设计竞赛"))
+
+    def test_location_query_fallback_on_unknown_location(self):
+        """知识库未覆盖的地点查询走 LLM"""
+        self.assertIsNone(guard.template_reply("游泳馆在哪？"))
+
+    def test_location_query_classify_returns_location_query(self):
+        """classify_message 对地点查询返回 location_query"""
+        self.assertEqual(guard.classify_message("学工办在哪"), "location_query")
+        self.assertEqual(guard.classify_message("医务室电话多少"), "location_query")
+
+    def test_print_transcript_not_classified_as_private_records(self):
+        """「打印成绩单」不应被归类为 private_records（成绩隐私）"""
+        self.assertNotEqual(guard.classify_message("去哪打印成绩单"), "private_records")
+
+    def test_match_location_query_returns_none_for_unmatched(self):
+        """无匹配时 match_location_query 返回 None"""
+        self.assertIsNone(guard.match_location_query("火星基地在哪"))
+
 
 if __name__ == "__main__":
     unittest.main()
