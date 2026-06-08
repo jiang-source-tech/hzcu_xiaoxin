@@ -141,7 +141,8 @@ python tests/test_relationship_v2.py --mode pressure --turns-per-day 5
 |------|------|------|
 | 事前 | `SKILL.md` | 人格定义中明确反编造规则 |
 | 事前 | `app.py` `build_system_prompt()` | System prompt 尾部追加 ⚠️ 禁编造约束 |
-| 事后 | `boundary_guard.py` | 后置验证：违规检测 + 地点核查 + 自动重试 → 兜底回复 + TTS 裁剪 |
+| 事前 | `boundary_guard.py` `build_location_context()` | 将匹配的 campus_directory 地点事实注入 system prompt，防止模型幻觉编造位置关系 |
+| 事后 | `boundary_guard.py` | 后置验证：违规检测 + 自动重试 → 兜底回复 + TTS 裁剪 |
 | 事后 | `rule_evaluator.py` | 场景探针检查 + forbidden phrases |
 
 违规检测覆盖：编造具体人物/竞赛/引语、承诺私人联系/代办、虚构真实经历、编造餐饮细节、报考预测、假设线下在场等。
