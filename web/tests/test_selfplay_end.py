@@ -377,6 +377,29 @@ class SelfplayEndTest(unittest.TestCase):
         self.assertIn("不能替你直接做志愿选择", payload["reply"])
         self.assertEqual(len(fake_client.calls), 0)
 
+    def test_chat_academic_recovery_question_does_not_repeat_grade_privacy_template(self):
+        fake_client = _FakeClient([
+            _route_json("official_process", "knowledge_grounded", domains=["official_process", "notice_channels"]),
+            "这类补考、重修规则要以教务系统和老师正式通知为准，我不能替学校下结论。你可以先让孩子确认课程是否没过、有没有补考安排，再把问题整理给辅导员或任课老师问清楚。[think]",
+        ])
+
+        with patch.object(app_module, "client", fake_client), \
+             patch.object(app_module, "run_tool", return_value=""):
+            response = app_module.app.test_client().post(
+                "/api/chat",
+                json={
+                    "user_id": "test_academic_recovery",
+                    "message": "嗯，您说得是，成绩肯定得等官方通知。那我先问问孩子最近月考或作业感觉怎么样，要是真考砸了，您觉得一般有什么补救办法？比如补考还是重修？",
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertIn("补考", payload["reply"])
+        self.assertIn("重修", payload["reply"])
+        self.assertNotIn("成绩和绩点我查不了", payload["reply"])
+        self.assertEqual(len(fake_client.calls), 2)
+
     def test_selfplay_uses_admissions_template_before_xiaoxin_model_call(self):
         fake_client = _FakeClient([
             "那我先去看招生官网和历年分数线，再比较专业课程。"

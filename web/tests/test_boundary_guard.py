@@ -159,6 +159,17 @@ class BoundaryGuardTest(unittest.TestCase):
         self.assertIn("招生官网", reply)
         self.assertNotIn("成绩和绩点我查不了", reply)
 
+    def test_academic_recovery_question_does_not_repeat_private_record_template(self):
+        text = "嗯，您说得是，成绩肯定得等官方通知。那我先问问孩子最近月考或作业感觉怎么样，要是真考砸了，您觉得一般有什么补救办法？比如补考还是重修？"
+
+        self.assertEqual(guard.classify_message(text), "official_process")
+        reply = guard.template_reply(text)
+
+        self.assertIsNotNone(reply)
+        self.assertIn("官方流程", reply)
+        self.assertNotIn("成绩和绩点我查不了", reply)
+        self.assertNotIn("不能替教务系统说结果", reply)
+
     def test_crisis_template_routes_to_real_world_help(self):
         reply = guard.template_reply("我真的撑不住了，感觉活着没意思。")
 

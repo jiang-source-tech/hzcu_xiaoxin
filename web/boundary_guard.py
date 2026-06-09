@@ -307,7 +307,18 @@ def classify_message(user_msg: str) -> str:
     if admissions_context:
         return "admissions_guidance"
 
-    if contains_any(text, ("成绩", "查分", "绩点", "期末分", "考试分")):
+    academic_recovery_context = contains_any(text, (
+        "补考", "重修", "挂科", "考砸", "没过", "不及格", "补救", "学业预警", "退课",
+    ))
+    if academic_recovery_context:
+        return "official_process"
+
+    private_record_context = contains_any(text, ("成绩", "查分", "绩点", "期末分", "考试分"))
+    private_record_query = contains_any(text, (
+        "帮我查", "能查", "查一下", "查查", "看一下", "看看", "告诉我", "是多少",
+        "多少分", "几分", "排名", "结果", "绩点多少", "分数",
+    ))
+    if private_record_context and (private_record_query or contains_any(text, ("绩点", "查分", "期末分", "考试分"))):
         return "private_records"
 
     notice_context = contains_any(text, ("通知", "报名", "扫新", "招新", "公众号", "年级群", "班级群", "群里"))
