@@ -545,6 +545,35 @@ class SelfplayEndTest(unittest.TestCase):
         self.assertNotIn("不能替你去问", payload["reply"])
         self.assertEqual(len(fake_client.calls), 2)
 
+    def test_chat_contact_question_drafting_does_not_repeat_contact_template(self):
+        fake_client = _FakeClient([
+            _route_json("message_drafting", "free_chat", focus="给辅导员询问实验中心电话的话术"),
+            "可以，别让消息像在催人就行。你可以这样问：老师您好，我想确认一下实验中心的官方联系电话或咨询渠道，请问方便指一下应该看哪里吗？如果要预约或先说明事项，我也可以补充说明。谢谢老师。[think]",
+        ])
+
+        with patch.object(app_module, "client", fake_client), \
+             patch.object(app_module, "run_tool", return_value=""):
+            response = app_module.app.test_client().post(
+                "/api/chat",
+                json={
+                    "user_id": "test_contact_question_drafting",
+                    "message": "那你帮我整理一个问实验中心电话的问题模板吧，我自己拿去问辅导员。",
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertIn("老师您好", payload["reply"])
+        self.assertIn("实验中心", payload["reply"])
+        self.assertIn("官方联系电话或咨询渠道", payload["reply"])
+        self.assertNotIn("没有可靠联系方式", payload["reply"])
+        self.assertNotIn("不能替你去问", payload["reply"])
+        self.assertEqual(len(fake_client.calls), 2)
+        self.assertEqual(fake_client.calls[0]["temperature"], 0)
+        route_instruction = fake_client.calls[1]["messages"][-2]["content"]
+        self.assertIn("整理消息模板", route_instruction)
+        self.assertIn("不能编造具体电话", route_instruction)
+
     def test_chat_focuses_chenyuan_when_beixiu_is_only_context(self):
         fake_client = _FakeClient([
             _route_json(

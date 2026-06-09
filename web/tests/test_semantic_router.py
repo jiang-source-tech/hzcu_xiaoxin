@@ -88,6 +88,31 @@ class SemanticRouterTest(unittest.TestCase):
         self.assertEqual(route["source"], "hard_boundary")
         self.assertEqual(len(fake_client.calls), 0)
 
+    def test_contact_question_drafting_goes_through_semantic_router(self):
+        fake_client = _FakeClient([json.dumps({
+            "intent": "message_drafting",
+            "focus": "给辅导员询问实验中心电话的话术",
+            "mentioned_not_focus": [],
+            "knowledge_domains": [],
+            "reply_mode": "free_chat",
+            "reason": "用户要自己去问，只是请小芯整理问法",
+        }, ensure_ascii=False)])
+
+        route = semantic_router.route_message(
+            "那你帮我整理一个问实验中心电话的问题模板吧，我自己拿去问辅导员。",
+            [
+                {"role": "user", "content": "实验中心的联系方式你能帮我问一下吗？拿到后发我就行。"},
+                {"role": "assistant", "content": "这个我这里没有可靠联系方式，不能替你去问。"},
+            ],
+            client=fake_client,
+            model="test-model",
+        )
+
+        self.assertEqual(route["intent"], "message_drafting")
+        self.assertEqual(route["reply_mode"], "free_chat")
+        self.assertEqual(route["source"], "llm")
+        self.assertEqual(len(fake_client.calls), 1)
+
     def test_private_records_go_through_semantic_router_before_hard_template(self):
         fake_client = _FakeClient([json.dumps({
             "intent": "private_records",

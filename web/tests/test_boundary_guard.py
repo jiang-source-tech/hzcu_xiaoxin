@@ -160,6 +160,16 @@ class BoundaryGuardTest(unittest.TestCase):
         self.assertIn("官方渠道", reply)
         self.assertNotIn("实验中心公开页面", reply)
 
+    def test_contact_question_drafting_is_not_official_contact_template(self):
+        text = "那你帮我整理一个问实验中心电话的问题模板吧，我自己拿去问辅导员。"
+
+        self.assertNotEqual(guard.classify_message(text), "official_contact")
+        reply = guard.template_reply(text)
+
+        if reply is not None:
+            self.assertNotIn("没有可靠联系方式", reply)
+            self.assertNotIn("不能替你去问", reply)
+
     def test_certificate_office_question_is_not_official_contact_template(self):
         text = "那你能帮我整理一下吗？我就想问明白，在校证明和成绩单这类东西，到底该去学生事务服务中心还是学院办公室开。"
 

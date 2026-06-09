@@ -137,6 +137,8 @@ reply_mode 只能是：
 - 只提到“成绩”不等于查个人成绩；如果是在问补考、重修、挂科补救，应判为 knowledge_grounded/official_process。
 - 只有明确要求查询个人成绩、绩点、分数结果，才判为 private_records/hard_template。
 - 只有明确要求预测录取概率、保证能上、替用户做志愿选择，才判为 admissions_guidance/hard_template。
+- 用户请小芯整理“我自己去问老师/辅导员”的问题模板、消息话术或问法时，判为 message_drafting/free_chat；不要当成联系方式代办。
+- 只有用户要求小芯替他去问、联系、获取、拿到后转发电话/微信/邮箱等，才判为 official_contact/hard_template。
 - 用户在感谢、说回头查、改天去试试时，通常是 free_chat。
 - 如果用户前半句提北秀，后半句问晨苑，focus 应是晨苑餐厅，北秀放 mentioned_not_focus。
 - 输出字段固定：intent, focus, mentioned_not_focus, knowledge_domains, reply_mode, reason。"""

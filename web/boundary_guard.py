@@ -311,6 +311,25 @@ def is_action_commitment(text: str) -> bool:
     return has_commitment and not has_question
 
 
+def is_contact_question_drafting(text: str) -> bool:
+    if not text:
+        return False
+
+    drafting_context = contains_any(text, (
+        "问题模板", "消息模板", "话术", "问法", "措辞", "文案",
+        "帮我写", "帮我整理", "帮我组织", "整理一个", "怎么问", "怎么发消息",
+    ))
+    if not drafting_context:
+        return False
+
+    delegated_action = contains_any(text, (
+        "你去问", "你帮我问", "帮我问一下", "帮我联系", "替我问", "替我联系",
+        "你帮我联系", "拿到后", "问到后", "第一时间发", "发我", "转发给我",
+        "帮我发", "你发给", "代我发",
+    ))
+    return not delegated_action
+
+
 def classify_message(user_msg: str) -> str:
     text = user_msg or ""
 
@@ -371,6 +390,8 @@ def classify_message(user_msg: str) -> str:
     official_contact_context = contains_any(text, ("联系方式", "电话", "手机号", "微信", "邮箱"))
     contact_fetch_context = contains_any(text, ("帮我问", "帮我联系", "替我问", "替我联系", "能不能问", "去问一下"))
     official_unit_context = contains_any(text, ("实验中心", "实验室", "学院", "教务", "辅导员", "老师", "办公室", "负责老师"))
+    if official_unit_context and official_contact_context and is_contact_question_drafting(text):
+        return "message_drafting"
     if official_unit_context and (official_contact_context or (contact_fetch_context and official_contact_context)):
         return "official_contact"
 

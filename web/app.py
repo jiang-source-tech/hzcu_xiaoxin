@@ -272,6 +272,13 @@ def knowledge_reference_for_route(user_msg: str, route: dict) -> str | None:
 def build_route_instruction(user_msg: str, route: dict) -> str | None:
     """Build a per-turn instruction after semantic routing."""
     mode = route.get("reply_mode")
+    if route.get("intent") == "message_drafting":
+        return (
+            "本轮用户是在请小芯整理消息模板或问法，且表示会自己去问老师/辅导员。"
+            "请直接给一段自然、礼貌、可复制的简短话术；可以提醒对方确认官方渠道。"
+            "不能编造具体电话、微信、邮箱，不能说小芯会替用户去问、联系或转发。"
+        )
+
     if mode == "free_chat":
         return (
             "本轮语义路由判断为自由聊天/情绪陪伴/行动确认。"
