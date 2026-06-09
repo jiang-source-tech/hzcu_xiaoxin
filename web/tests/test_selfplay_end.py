@@ -1,3 +1,4 @@
+import json
 import os
 import sys
 import unittest
@@ -9,6 +10,17 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import app as app_module
 from app import is_student_farewell
+
+
+def _route_json(intent="open_chat", reply_mode="free_chat", focus=None, domains=None, mentioned=None):
+    return json.dumps({
+        "intent": intent,
+        "focus": focus,
+        "mentioned_not_focus": mentioned or [],
+        "knowledge_domains": domains or [],
+        "reply_mode": reply_mode,
+        "reason": "unit test route",
+    }, ensure_ascii=False)
 
 
 class _FakeMessage:
@@ -36,6 +48,13 @@ class _FakeCompletions:
         self.calls = []
 
     def create(self, **kwargs):
+        is_router_call = (
+            kwargs.get("temperature") == 0
+            and kwargs.get("max_tokens") == app_module.semantic_router.ROUTER_MAX_TOKENS
+        )
+        if is_router_call and (not self.replies or not str(self.replies[0]).lstrip().startswith("{")):
+            return _FakeResponse(_route_json())
+
         self.calls.append(kwargs)
         return _FakeResponse(self.replies.pop(0))
 
@@ -243,8 +262,11 @@ class SelfplayEndTest(unittest.TestCase):
         self.assertIn("编造餐饮推荐", types)
         self.assertIn("假设线下在场", types)
 
-    def test_chat_uses_canteen_template_without_model_call(self):
-        fake_client = _FakeClient([])
+    def test_chat_injects_canteen_knowledge_without_returning_template(self):
+        fake_client = _FakeClient([
+            _route_json("canteen_locations", "knowledge_grounded", domains=["canteen"]),
+            "学校常去的食堂大概有北校区的北秀食堂、南校区的晨苑餐厅和二食堂，也有学苑餐厅、石榴红餐厅这些选择。具体几号楼几层我不敢乱说，你到时用校园地图确认一下更稳。[think]",
+        ])
 
         with patch.object(app_module, "client", fake_client), \
              patch.object(app_module, "run_tool", return_value=""):
@@ -261,11 +283,17 @@ class SelfplayEndTest(unittest.TestCase):
         self.assertIn("北秀食堂", payload["reply"])
         self.assertIn("speech", payload)
         self.assertIn("石榴红餐厅", payload["reply"])
-        self.assertIn("不敢乱说", payload["reply"])
-        self.assertEqual(len(fake_client.calls), 0)
+        self.assertNotIn("食堂我知道个大概", payload["reply"])
+        self.assertEqual(len(fake_client.calls), 2)
+        self.assertEqual(fake_client.calls[0]["temperature"], 0)
+        knowledge_system = fake_client.calls[1]["messages"][-2]["content"]
+        self.assertIn("本轮可用知识库事实", knowledge_system)
+        self.assertIn("北秀食堂", knowledge_system)
+        self.assertIn("不要照搬模板", knowledge_system)
 
     def test_chat_does_not_use_canteen_template_for_emotional_experience(self):
         fake_client = _FakeClient([
+            _route_json("emotional_support", "free_chat"),
             "嗯嗯，食堂刚到饭点确实会有点吵。你可以先找靠边的位置坐一会儿，慢慢吃，不用急。[think]",
         ])
 
@@ -283,7 +311,30 @@ class SelfplayEndTest(unittest.TestCase):
         payload = response.get_json()
         self.assertIn("有点吵", payload["reply"])
         self.assertNotIn("食堂我知道个大概", payload["reply"])
-        self.assertEqual(len(fake_client.calls), 1)
+        self.assertEqual(len(fake_client.calls), 2)
+
+    def test_chat_action_confirmation_does_not_trigger_notice_or_canteen_template(self):
+        fake_client = _FakeClient([
+            _route_json("action_confirmation", "free_chat", mentioned=["爱城院", "北秀食堂"]),
+            "好嘞，慢慢探索就行。真去试了再回来跟我说说感受，我也想听你的第一手体验。[smile]",
+        ])
+
+        with patch.object(app_module, "client", fake_client), \
+             patch.object(app_module, "run_tool", return_value=""):
+            response = app_module.app.test_client().post(
+                "/api/chat",
+                json={
+                    "user_id": "test_action_confirmation_route",
+                    "message": "好嘞，那我回头用爱城院查查地图，改天去北秀食堂试试看。谢谢小芯啦！",
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertIn("慢慢探索", payload["reply"])
+        self.assertNotIn("一般可以先看这几类渠道", payload["reply"])
+        self.assertNotIn("食堂我知道个大概", payload["reply"])
+        self.assertEqual(len(fake_client.calls), 2)
 
     def test_chat_uses_competition_resource_template_without_model_call(self):
         fake_client = _FakeClient([])
@@ -351,6 +402,7 @@ class SelfplayEndTest(unittest.TestCase):
 
     def test_chat_model_call_uses_configured_xiaoxin_token_budget_and_returns_speech(self):
         fake_client = _FakeClient([
+            _route_json("learning_advice", "free_chat"),
             "这是一句完整回复。这里再补一句给语音播报。[smile]",
         ])
 
@@ -367,7 +419,83 @@ class SelfplayEndTest(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         payload = response.get_json()
         self.assertEqual(payload["speech"], "这是一句完整回复。这里再补一句给语音播报。")
-        self.assertEqual(fake_client.calls[0]["max_tokens"], app_module.XIAOXIN_MAX_TOKENS)
+        self.assertEqual(fake_client.calls[1]["max_tokens"], app_module.XIAOXIN_MAX_TOKENS)
+
+    def test_chat_notice_question_uses_real_channel_facts(self):
+        fake_client = _FakeClient([
+            _route_json("notice_channels", "knowledge_grounded", domains=["notice_channels"]),
+            "扫新通知一般先看爱城院，年级群或班级群里辅导员也会同步提醒；学院或学校的重要通知也要看正式通知渠道。具体报名时间和地点还是以最新通知为准。[think]",
+        ])
+
+        with patch.object(app_module, "client", fake_client), \
+             patch.object(app_module, "run_tool", return_value=""):
+            response = app_module.app.test_client().post(
+                "/api/chat",
+                json={
+                    "user_id": "test_notice_route",
+                    "message": "小芯，扫新通知一般在哪里看啊？",
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertIn("爱城院", payload["reply"])
+        self.assertIn("年级群", payload["reply"])
+        self.assertIn("辅导员", payload["reply"])
+        knowledge_system = fake_client.calls[1]["messages"][-2]["content"]
+        self.assertIn("活动通知", knowledge_system)
+
+    def test_chat_focuses_chenyuan_when_beixiu_is_only_context(self):
+        fake_client = _FakeClient([
+            _route_json(
+                "canteen_recommendation",
+                "knowledge_grounded",
+                focus="晨苑餐厅",
+                domains=["canteen"],
+                mentioned=["北秀食堂"],
+            ),
+            "晨苑这块我查到的公开信息偏概括，只说它是南校区比较现代、选择不少的餐厅，没有可靠的招牌菜排行。你可以把它当成顺路探索点，别为了所谓必吃专门绕太远。[wink]",
+        ])
+
+        with patch.object(app_module, "client", fake_client), \
+             patch.object(app_module, "run_tool", return_value=""):
+            response = app_module.app.test_client().post(
+                "/api/chat",
+                json={
+                    "user_id": "test_chenyuan_focus",
+                    "message": "那我明天中午先去北秀食堂吃一波拌面，晨苑餐厅有没有什么招牌菜值得我绕路去吃的？",
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertIn("晨苑", payload["reply"])
+        self.assertNotIn("北秀食堂资料里提到", payload["reply"])
+        self.assertNotIn("面馆", payload["reply"])
+
+    def test_chat_rewrites_template_like_free_chat_reply(self):
+        fake_client = _FakeClient([
+            _route_json("action_confirmation", "free_chat", mentioned=["爱城院", "北秀食堂"]),
+            "一般可以先看这几类渠道：爱城院、年级群、辅导员通知。[think]",
+            "好嘞，那你回头慢慢查就行，不用一下子把校园摸透。试完北秀再回来跟我讲讲感受。[smile]",
+        ])
+
+        with patch.object(app_module, "client", fake_client), \
+             patch.object(app_module, "run_tool", return_value=""):
+            response = app_module.app.test_client().post(
+                "/api/chat",
+                json={
+                    "user_id": "test_template_like_rewrite",
+                    "message": "好嘞，那我回头用爱城院查查地图，改天去北秀食堂试试看。谢谢小芯啦！",
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertIn("慢慢查", payload["reply"])
+        self.assertNotIn("一般可以先看这几类渠道", payload["reply"])
+        self.assertEqual(len(fake_client.calls), 3)
+        self.assertIn("不要输出通知渠道", fake_client.calls[2]["messages"][-1]["content"])
 
     def test_persona_groups_separate_normal_risk_and_adversarial_roles(self):
         self.assertEqual(
@@ -420,6 +548,8 @@ class SelfplayEndTest(unittest.TestCase):
 
     def test_campus_boundary_persona_prompt_lists_boundary_topics(self):
         fake_client = _FakeClient([
+            _route_json("official_process", "knowledge_grounded", domains=["notice_channels"]),
+            "这个属于可能会变化的事务，我不能替正式通知说准。你可以先看爱城院、年级群和辅导员通知，我也能帮你把要问的问题列清楚。[think]",
             "那宿舍能不能换床位？你直接告诉我找谁。",
         ])
 
@@ -438,7 +568,7 @@ class SelfplayEndTest(unittest.TestCase):
             )
 
         self.assertEqual(response.status_code, 200)
-        student_system_prompt = fake_client.calls[0]["messages"][0]["content"]
+        student_system_prompt = fake_client.calls[-1]["messages"][0]["content"]
         self.assertIn("校园生活边界", student_system_prompt)
         self.assertIn("缴费和选课", student_system_prompt)
         self.assertIn("成绩和个人隐私查询", student_system_prompt)
@@ -499,6 +629,8 @@ class SelfplayEndTest(unittest.TestCase):
 
     def test_foodie_persona_prompt_focuses_on_canteen_boundaries(self):
         fake_client = _FakeClient([
+            _route_json("canteen_locations", "knowledge_grounded", domains=["canteen"]),
+            "学校食堂可以先按南北校区大概记，具体楼层和窗口我不乱说，还是看校园地图更稳。[think]",
             "那北秀食堂具体在几号楼几层呀？",
         ])
 
@@ -517,7 +649,7 @@ class SelfplayEndTest(unittest.TestCase):
             )
 
         self.assertEqual(response.status_code, 200)
-        student_system_prompt = fake_client.calls[0]["messages"][0]["content"]
+        student_system_prompt = fake_client.calls[-1]["messages"][0]["content"]
         self.assertIn("吃货学生", student_system_prompt)
         self.assertIn("食堂、餐厅、夜宵", student_system_prompt)
         self.assertIn("像真实学生一样自然追问", student_system_prompt)

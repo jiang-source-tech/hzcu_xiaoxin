@@ -1,0 +1,115 @@
+import json
+import sys
+import unittest
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+import semantic_router
+
+
+class _FakeMessage:
+    def __init__(self, content):
+        self.content = content
+
+
+class _FakeChoice:
+    def __init__(self, content):
+        self.message = _FakeMessage(content)
+
+
+class _FakeResponse:
+    def __init__(self, content):
+        self.choices = [_FakeChoice(content)]
+
+
+class _FakeCompletions:
+    def __init__(self, replies):
+        self.replies = list(replies)
+        self.calls = []
+
+    def create(self, **kwargs):
+        self.calls.append(kwargs)
+        return _FakeResponse(self.replies.pop(0))
+
+
+class _FakeChat:
+    def __init__(self, replies):
+        self.completions = _FakeCompletions(replies)
+
+
+class _FakeClient:
+    def __init__(self, replies):
+        self.chat = _FakeChat(replies)
+
+    @property
+    def calls(self):
+        return self.chat.completions.calls
+
+
+class SemanticRouterTest(unittest.TestCase):
+    def test_parse_json_route_normalizes_valid_reply(self):
+        route = semantic_router.parse_route_json(json.dumps({
+            "intent": "action_confirmation",
+            "focus": None,
+            "mentioned_not_focus": ["爱城院", "北秀食堂"],
+            "knowledge_domains": [],
+            "reply_mode": "free_chat",
+            "reason": "用户是在收尾感谢",
+        }, ensure_ascii=False))
+
+        self.assertEqual(route["intent"], "action_confirmation")
+        self.assertEqual(route["reply_mode"], "free_chat")
+        self.assertIn("北秀食堂", route["mentioned_not_focus"])
+
+    def test_parse_json_route_falls_back_on_invalid_json(self):
+        route = semantic_router.route_message(
+            "小芯，扫新通知一般在哪里看？",
+            [],
+            client=_FakeClient(["不是 JSON"]),
+            model="test-model",
+        )
+
+        self.assertEqual(route["reply_mode"], "knowledge_grounded")
+        self.assertIn("notice_channels", route["knowledge_domains"])
+        self.assertEqual(route["source"], "fallback")
+
+    def test_hard_boundary_routes_without_llm(self):
+        fake_client = _FakeClient([])
+
+        route = semantic_router.route_message(
+            "我想考浙大城市学院，录取概率稳不稳？",
+            [],
+            client=fake_client,
+            model="test-model",
+        )
+
+        self.assertEqual(route["reply_mode"], "hard_template")
+        self.assertEqual(route["source"], "hard_boundary")
+        self.assertEqual(len(fake_client.calls), 0)
+
+    def test_llm_route_uses_recent_context_and_low_temperature(self):
+        fake_client = _FakeClient([json.dumps({
+            "intent": "canteen_recommendation",
+            "focus": "晨苑餐厅",
+            "mentioned_not_focus": ["北秀食堂"],
+            "knowledge_domains": ["canteen"],
+            "reply_mode": "knowledge_grounded",
+            "reason": "用户问晨苑有没有值得吃的菜",
+        }, ensure_ascii=False)])
+
+        route = semantic_router.route_message(
+            "那我明天中午先去北秀食堂吃一波拌面，晨苑餐厅有没有什么招牌菜值得我绕路去吃的？",
+            [{"role": "assistant", "content": "可以先看看食堂分布。"}],
+            client=fake_client,
+            model="test-model",
+        )
+
+        self.assertEqual(route["focus"], "晨苑餐厅")
+        self.assertEqual(route["reply_mode"], "knowledge_grounded")
+        self.assertEqual(fake_client.calls[0]["temperature"], 0)
+        self.assertEqual(fake_client.calls[0]["max_tokens"], semantic_router.ROUTER_MAX_TOKENS)
+
+
+if __name__ == "__main__":
+    unittest.main()

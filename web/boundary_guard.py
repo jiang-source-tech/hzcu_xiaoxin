@@ -484,8 +484,12 @@ def detect_reply_violations(user_msg: str, reply: str) -> list[dict]:
                 })
                 break
 
+        cautious_taste_context = contains_any(clean, (
+            "没有可靠", "没有查到", "没查到", "不能乱封", "不敢乱说", "不敢说",
+            "不确定", "事实不足", "没有具体招牌", "没有招牌菜排行",
+        ))
         for phrase in ("最好吃", "最香", "够味", "必吃", "招牌"):
-            if phrase in clean:
+            if phrase in clean and not cautious_taste_context:
                 violations.append({
                     "type": "编造餐饮推荐",
                     "evidence": phrase,

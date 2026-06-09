@@ -19,6 +19,7 @@ from openai import OpenAI
 
 import boundary_guard as guard
 import relationship_state
+import semantic_router
 import turn_analyzer
 
 load_dotenv()
@@ -256,6 +257,173 @@ def fallback_xiaoxin_reply(user_msg: str) -> str:
     return guard.fallback_reply(user_msg)
 
 
+def knowledge_reference_for_route(user_msg: str, route: dict) -> str | None:
+    """Return bounded knowledge text for the current semantic route."""
+    if route.get("reply_mode") != "knowledge_grounded":
+        return None
+
+    reference = guard.template_reply(user_msg)
+    if reference:
+        return reference
+
+    return None
+
+
+def build_route_instruction(user_msg: str, route: dict) -> str | None:
+    """Build a per-turn instruction after semantic routing."""
+    mode = route.get("reply_mode")
+    if mode == "free_chat":
+        return (
+            "本轮语义路由判断为自由聊天/情绪陪伴/行动确认。"
+            "不要因为用户提到食堂、爱城院、地点、活动等词就输出知识库模板；"
+            "先接住用户真实语气，用小芯口吻自然回复2-4句。"
+        )
+
+    reference = knowledge_reference_for_route(user_msg, route)
+    if not reference:
+        return None
+
+    focus = route.get("focus") or "用户当前问题"
+    domains = "、".join(route.get("knowledge_domains") or []) or "校园知识"
+    return (
+        f"本轮语义路由判断需要知识库支撑。焦点：{focus}；知识域：{domains}。\n"
+        f"本轮可用知识库事实：{guard.strip_expression(reference)}\n"
+        "请只基于这些事实自然回答，2-4句；不要照搬模板开头；不要编造超出事实的信息；"
+        "如果事实不足，就直接说明不确定并建议看爱城院、学校/学院正式通知、年级群或辅导员通知。"
+    )
+
+
+def reply_mismatches_route(route: dict, reply: str) -> str | None:
+    """Cheap semantic QA before showing a reply."""
+    clean = guard.strip_expression(reply)
+    intent = route.get("intent")
+    mode = route.get("reply_mode")
+
+    template_markers = (
+        "一般可以先看这几类渠道",
+        "我查到知识库里写的是",
+        "食堂我知道个大概",
+        "公开资料里能看到的类型还挺多",
+        "这个属于官方流程或实时安排",
+    )
+    if mode == "free_chat" or intent == "action_confirmation":
+        if any(marker in clean for marker in template_markers):
+            return "free_chat_template"
+        notice_terms = sum(1 for term in ("爱城院", "年级群", "班级群", "辅导员通知", "正式通知") if term in clean)
+        canteen_terms = sum(1 for term in ("北秀食堂", "晨苑餐厅", "二食堂", "学苑餐厅", "石榴红餐厅") if term in clean)
+        if notice_terms >= 3 or canteen_terms >= 3:
+            return "free_chat_long_knowledge"
+
+    focus = str(route.get("focus") or "")
+    if "晨苑" in focus:
+        if "北秀食堂资料里提到" in clean or "面馆" in clean:
+            return "wrong_canteen_focus"
+
+    return None
+
+
+def route_retry_instruction(route: dict, mismatch: str) -> str:
+    """Tell Xiaoxin how to repair a route-level mismatch."""
+    if mismatch.startswith("free_chat"):
+        return (
+            "上一条回复像模板，和用户真实意图不匹配。请重写：这轮是行动确认、感谢或普通陪伴，"
+            "不要输出通知渠道、食堂清单、地点说明或知识库长文；自然接一句到三句，可以带一个表情标记。"
+        )
+    if mismatch == "wrong_canteen_focus":
+        return (
+            "上一条回复焦点错了。用户真正问的是晨苑餐厅，不要展开北秀食堂资料，不要提面馆；"
+            "只围绕晨苑已知/未知信息自然回答，2-4句，可以带一个表情标记。"
+        )
+    return "上一条回复和本轮语义焦点不匹配。请按用户真实问题重写，简短自然，不要输出模板长文。"
+
+
+def fallback_reply_for_route(user_msg: str, route: dict) -> str:
+    if route.get("intent") == "action_confirmation" or route.get("reply_mode") == "free_chat":
+        return "好嘞，我懂你的意思了。你先按自己的节奏慢慢来，后面想继续问我就在这儿。[smile]"
+    return fallback_xiaoxin_reply(user_msg)
+
+
+def generate_xiaoxin_reply(user_msg: str, messages: list[dict], route: dict) -> str:
+    """Call the Xiaoxin model with route-aware instructions and repair checks."""
+    try:
+        response = client.chat.completions.create(
+            model=MODEL,
+            messages=messages,
+            temperature=0.8,
+            max_tokens=XIAOXIN_MAX_TOKENS,
+        )
+    except Exception:
+        raise
+
+    reply = response.choices[0].message.content.strip()
+    if response_was_truncated(response) or is_fragmented_xiaoxin_reply(reply):
+        retry_messages = [
+            *messages,
+            {"role": "system", "content": "上一条回复不完整，请重新用小芯的口吻完整回答。输出2-4句，可以带一个表情标记。"},
+        ]
+        response = client.chat.completions.create(
+            model=MODEL,
+            messages=retry_messages,
+            temperature=0.6,
+            max_tokens=XIAOXIN_MAX_TOKENS,
+        )
+        reply = response.choices[0].message.content.strip()
+
+    mismatch = reply_mismatches_route(route, reply)
+    if mismatch:
+        retry_messages = [
+            *messages,
+            {"role": "system", "content": route_retry_instruction(route, mismatch)},
+        ]
+        response = client.chat.completions.create(
+            model=MODEL,
+            messages=retry_messages,
+            temperature=0.5,
+            max_tokens=XIAOXIN_MAX_TOKENS,
+        )
+        reply = response.choices[0].message.content.strip()
+
+    if is_boundary_violating_xiaoxin_reply(user_msg, reply):
+        retry_messages = [
+            *messages,
+            {"role": "system", "content": guard.retry_instruction(user_msg, reply)},
+        ]
+        response = client.chat.completions.create(
+            model=MODEL,
+            messages=retry_messages,
+            temperature=0.5,
+            max_tokens=XIAOXIN_MAX_TOKENS,
+        )
+        reply = response.choices[0].message.content.strip()
+
+    if (
+        is_fragmented_xiaoxin_reply(reply)
+        or is_boundary_violating_xiaoxin_reply(user_msg, reply)
+        or reply_mismatches_route(route, reply)
+    ):
+        reply = fallback_reply_for_route(user_msg, route)
+
+    return reply
+
+
+def route_user_message(user_msg: str, conversation: list[dict]) -> dict:
+    """Run deterministic hard boundaries first, then semantic routing."""
+    return semantic_router.route_message(user_msg, conversation, client=client, model=MODEL)
+
+
+def with_route_instruction(messages: list[dict], instruction: str | None) -> list[dict]:
+    """Insert per-turn route guidance right before the current user message."""
+    if not instruction:
+        return messages
+    if messages and messages[-1].get("role") == "user":
+        return [
+            *messages[:-1],
+            {"role": "system", "content": instruction},
+            messages[-1],
+        ]
+    return [*messages, {"role": "system", "content": instruction}]
+
+
 # ─── 记忆自动保存（后端检测）─────────────────────────────────────────────
 
 def auto_save_memory(user_id: str, user_msg: str, reply: str):
@@ -397,8 +565,11 @@ def chat():
     relationship = relationship_state.load_state(DATA_DIR, user_id)
     turn_analysis = turn_analyzer.analyze(user_msg, relationship)
 
-    guarded_reply = guard.template_reply(user_msg)
-    if guarded_reply:
+    route = route_user_message(user_msg, history[-4:])
+    print(f"[ROUTE] {route}")
+
+    if route.get("reply_mode") == "hard_template":
+        guarded_reply = guard.template_reply(user_msg) or fallback_xiaoxin_reply(user_msg)
         relationship = relationship_state.update_after_turn(relationship, turn_analysis)
         relationship_state.save_state(DATA_DIR, user_id, relationship)
         payload = record_chat_reply(
@@ -423,48 +594,14 @@ def chat():
     for h in history[-20:]:
         messages.append(h)
     messages.append({"role": "user", "content": user_msg})
+    messages = with_route_instruction(messages, build_route_instruction(user_msg, route))
 
     # 调用 DeepSeek API
     try:
-        response = client.chat.completions.create(
-            model=MODEL,
-            messages=messages,
-            temperature=0.8,
-            max_tokens=XIAOXIN_MAX_TOKENS,
-        )
+        reply = generate_xiaoxin_reply(user_msg, messages, route)
     except Exception as e:
         print(f"[API ERROR] {e}")
         return jsonify({"error": f"API 调用失败: {str(e)}"}), 500
-
-    reply = response.choices[0].message.content.strip()
-    if response_was_truncated(response) or is_fragmented_xiaoxin_reply(reply):
-        retry_messages = [
-            *messages,
-            {"role": "system", "content": "上一条回复不完整，请重新用小芯的口吻完整回答。输出2-4句，可以带一个表情标记。"},
-        ]
-        response = client.chat.completions.create(
-            model=MODEL,
-            messages=retry_messages,
-            temperature=0.6,
-            max_tokens=XIAOXIN_MAX_TOKENS,
-        )
-        reply = response.choices[0].message.content.strip()
-
-    if is_boundary_violating_xiaoxin_reply(user_msg, reply):
-        retry_messages = [
-            *messages,
-            {"role": "system", "content": guard.retry_instruction(user_msg, reply)},
-        ]
-        response = client.chat.completions.create(
-            model=MODEL,
-            messages=retry_messages,
-            temperature=0.5,
-            max_tokens=XIAOXIN_MAX_TOKENS,
-        )
-        reply = response.choices[0].message.content.strip()
-
-    if is_fragmented_xiaoxin_reply(reply) or is_boundary_violating_xiaoxin_reply(user_msg, reply):
-        reply = fallback_xiaoxin_reply(user_msg)
 
     relationship = relationship_state.update_after_turn(relationship, turn_analysis)
     relationship_state.save_state(DATA_DIR, user_id, relationship)
@@ -656,35 +793,19 @@ def selfplay_turn():
         {"role": "system", "content": xiaoxin_sp},
         *build_selfplay_messages(conversation, user_msg),
     ]
-    xiaoxin_reply = guard.template_reply(user_msg)
-    if not xiaoxin_reply:
+    route = route_user_message(user_msg, conversation[-4:])
+    print(f"[SELFPLAY ROUTE] {route}")
+    if route.get("reply_mode") == "hard_template":
+        xiaoxin_reply = guard.template_reply(user_msg) or fallback_xiaoxin_reply(user_msg)
+    else:
+        xiaoxin_messages = with_route_instruction(
+            xiaoxin_messages,
+            build_route_instruction(user_msg, route),
+        )
         try:
-            xr = client.chat.completions.create(
-                model=MODEL, messages=xiaoxin_messages, temperature=0.8, max_tokens=XIAOXIN_MAX_TOKENS)
-            xiaoxin_reply = xr.choices[0].message.content.strip()
-            if response_was_truncated(xr) or is_fragmented_xiaoxin_reply(xiaoxin_reply):
-                retry_messages = [
-                    *xiaoxin_messages,
-                    {"role": "system", "content": "上一条回复不完整，请重新用小芯的口吻完整回答。输出2-4句，可以带一个表情标记。"},
-                ]
-                xr = client.chat.completions.create(
-                    model=MODEL, messages=retry_messages, temperature=0.6, max_tokens=XIAOXIN_MAX_TOKENS)
-                xiaoxin_reply = xr.choices[0].message.content.strip()
-            if is_boundary_violating_xiaoxin_reply(user_msg, xiaoxin_reply):
-                retry_messages = [
-                    *xiaoxin_messages,
-                    {"role": "system", "content": guard.retry_instruction(user_msg, xiaoxin_reply)},
-                ]
-                xr = client.chat.completions.create(
-                    model=MODEL, messages=retry_messages, temperature=0.5, max_tokens=XIAOXIN_MAX_TOKENS)
-                xiaoxin_reply = xr.choices[0].message.content.strip()
+            xiaoxin_reply = generate_xiaoxin_reply(user_msg, xiaoxin_messages, route)
         except Exception as e:
             return jsonify({"error": f"小芯 API 错误: {e}"}), 500
-
-    if is_fragmented_xiaoxin_reply(xiaoxin_reply):
-        xiaoxin_reply = fallback_xiaoxin_reply(user_msg)
-    elif is_boundary_violating_xiaoxin_reply(user_msg, xiaoxin_reply):
-        xiaoxin_reply = fallback_xiaoxin_reply(user_msg)
 
     clean, exp = parse_expression(xiaoxin_reply)
 
