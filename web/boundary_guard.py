@@ -147,6 +147,51 @@ def format_canteen_public_details() -> str:
     return "；".join(details)
 
 
+def mentioned_canteens(text: str) -> list[dict]:
+    result = []
+    for item in load_campus_life().get("canteens", []):
+        name = item.get("name", "")
+        short_name = name.replace("食堂", "").replace("餐厅", "")
+        if name and (name in text or (short_name and short_name in text)):
+            result.append(item)
+    return result
+
+
+def focus_canteen_for_recommendation(text: str) -> dict | None:
+    mentioned = mentioned_canteens(text)
+    if not mentioned:
+        return None
+
+    question_tail = re.split(r"[？?。！!，,；;]", text)[-2:]
+    tail_text = "".join(question_tail) if question_tail else text
+    for item in reversed(mentioned):
+        name = item.get("name", "")
+        short_name = name.replace("食堂", "").replace("餐厅", "")
+        if name in tail_text or (short_name and short_name in tail_text):
+            return item
+    return mentioned[-1]
+
+
+def format_canteen_recommendation(user_msg: str) -> str:
+    focused = focus_canteen_for_recommendation(user_msg)
+    if focused:
+        known_items = focused.get("known_items") or []
+        if known_items:
+            public_details = f"{focused['name']}资料里提到有{'、'.join(known_items)}"
+        else:
+            public_details = f"{focused['name']}这块我没有查到具体招牌菜或口味排行"
+        return (
+            f"吃饭这事我能给你公开信息，但不能乱封“最好吃”。{public_details}；"
+            "具体口味、价格、窗口和营业时间，还是你实地看看更准。[wink]"
+        )
+
+    public_details = format_canteen_public_details()
+    return (
+        f"吃饭这事我能给你公开信息，但不能乱封“最好吃”。{public_details}；"
+        "具体口味、价格、窗口和营业时间，还是你实地看看更准。[wink]"
+    )
+
+
 def format_notice_channels() -> str:
     channels = load_campus_life().get("communication_channels", {})
     known = channels.get("known") or []
@@ -296,11 +341,7 @@ def template_reply(user_msg: str) -> str | None:
         )
 
     if category == "canteen_recommendation":
-        public_details = format_canteen_public_details()
-        return (
-            f"吃饭这事我能给你公开信息，但不能乱封“最好吃”。{public_details}；"
-            "具体口味、价格、窗口和营业时间，还是你实地看看更准。[wink]"
-        )
+        return format_canteen_recommendation(user_msg)
 
     if category == "campus_knowledge":
         return campus_knowledge_reply(user_msg)

@@ -81,11 +81,14 @@ class BoundaryGuardTest(unittest.TestCase):
         self.assertIsNone(reply)
 
     def test_canteen_taste_question_does_not_trigger_location_knowledge(self):
-        reply = guard.template_reply("晨苑餐厅有没有什么招牌菜值得我绕路去吃的？")
+        reply = guard.template_reply("那我明天中午先去北秀食堂吃一波拌面，晨苑餐厅有没有什么招牌菜值得我绕路去吃的？")
 
         self.assertIsNotNone(reply)
         self.assertIn("不能乱封", reply)
         self.assertIn("具体口味", reply)
+        self.assertIn("晨苑餐厅", reply)
+        self.assertNotIn("北秀食堂资料里提到", reply)
+        self.assertNotIn("面馆", reply)
         self.assertNotIn("位于", reply)
         self.assertNotIn("排球场旁", reply)
         self.assertNotIn("生活广场", reply)
