@@ -497,6 +497,30 @@ class SelfplayEndTest(unittest.TestCase):
         knowledge_system = fake_client.calls[1]["messages"][-2]["content"]
         self.assertIn("活动通知", knowledge_system)
 
+    def test_chat_certificate_office_question_does_not_repeat_contact_template(self):
+        fake_client = _FakeClient([
+            _route_json("campus_knowledge", "knowledge_grounded", domains=["campus_directory", "student_affairs"]),
+            "可以这样整理：在校证明、成绩单这类材料先看行政楼一楼自助打印终端；学生事务服务中心在行政楼302，更多事务可再确认。学院办公室更适合问学院内部事务，最终以学校最新通知或老师答复为准。[think]",
+        ])
+
+        with patch.object(app_module, "client", fake_client), \
+             patch.object(app_module, "run_tool", return_value=""):
+            response = app_module.app.test_client().post(
+                "/api/chat",
+                json={
+                    "user_id": "test_certificate_office_route",
+                    "message": "那你能帮我整理一下吗？我就想问明白，在校证明和成绩单这类东西，到底该去学生事务服务中心还是学院办公室开。",
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertIn("在校证明", payload["reply"])
+        self.assertIn("成绩单", payload["reply"])
+        self.assertNotIn("没有可靠联系方式", payload["reply"])
+        self.assertNotIn("不能替你去问", payload["reply"])
+        self.assertEqual(len(fake_client.calls), 2)
+
     def test_chat_focuses_chenyuan_when_beixiu_is_only_context(self):
         fake_client = _FakeClient([
             _route_json(

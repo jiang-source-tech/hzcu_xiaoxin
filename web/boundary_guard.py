@@ -339,9 +339,16 @@ def classify_message(user_msg: str) -> str:
     if contains_any(text, ("宿舍换床位", "换床位", "换寝室", "调宿舍", "停水", "停电", "明天停", "今晚停")):
         return "official_process"
 
-    official_contact_context = contains_any(text, ("联系方式", "电话", "手机号", "微信", "邮箱", "办公室"))
+    certificate_service_context = contains_any(text, (
+        "在校证明", "成绩单", "证明打印", "自助打印", "打印终端", "学生事务服务中心",
+    ))
+    if certificate_service_context:
+        return "campus_knowledge"
+
+    official_contact_context = contains_any(text, ("联系方式", "电话", "手机号", "微信", "邮箱"))
+    contact_fetch_context = contains_any(text, ("帮我问", "帮我联系", "替我问", "替我联系", "能不能问", "去问一下"))
     official_unit_context = contains_any(text, ("实验中心", "实验室", "学院", "教务", "辅导员", "老师", "办公室", "负责老师"))
-    if official_contact_context and official_unit_context:
+    if official_unit_context and (official_contact_context or (contact_fetch_context and official_contact_context)):
         return "official_contact"
 
     competition_context = contains_any(text, ("竞赛", "智能车", "电子设计", "机器人", "比赛", "队友", "组队"))
