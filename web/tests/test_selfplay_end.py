@@ -265,7 +265,7 @@ class SelfplayEndTest(unittest.TestCase):
     def test_chat_injects_canteen_knowledge_without_returning_template(self):
         fake_client = _FakeClient([
             _route_json("canteen_locations", "knowledge_grounded", domains=["canteen"]),
-            "学校常去的食堂大概有北校区的北秀食堂、南校区的晨苑餐厅和二食堂，也有学苑餐厅、石榴红餐厅这些选择。具体几号楼几层我不敢乱说，你到时用校园地图确认一下更稳。[think]",
+            "学校食堂按校区记更清楚：北校区有北秀食堂、石榴红餐厅、浙大工程师学院食堂；南校区有二食堂、学苑餐厅、晨苑餐厅。具体几号楼几层、窗口和营业时间我不敢乱说，你到时用校园地图确认一下更稳。[think]",
         ])
 
         with patch.object(app_module, "client", fake_client), \
@@ -283,12 +283,15 @@ class SelfplayEndTest(unittest.TestCase):
         self.assertIn("北秀食堂", payload["reply"])
         self.assertIn("speech", payload)
         self.assertIn("石榴红餐厅", payload["reply"])
+        self.assertIn("浙大工程师学院食堂", payload["reply"])
+        self.assertIn("南校区有二食堂、学苑餐厅、晨苑餐厅", payload["reply"])
         self.assertNotIn("食堂我知道个大概", payload["reply"])
         self.assertEqual(len(fake_client.calls), 2)
         self.assertEqual(fake_client.calls[0]["temperature"], 0)
         knowledge_system = fake_client.calls[1]["messages"][-2]["content"]
         self.assertIn("本轮可用知识库事实", knowledge_system)
         self.assertIn("北秀食堂", knowledge_system)
+        self.assertIn("浙大工程师学院食堂", knowledge_system)
         self.assertIn("不要照搬模板", knowledge_system)
 
     def test_chat_does_not_use_canteen_template_for_emotional_experience(self):
@@ -630,7 +633,7 @@ class SelfplayEndTest(unittest.TestCase):
     def test_foodie_persona_prompt_focuses_on_canteen_boundaries(self):
         fake_client = _FakeClient([
             _route_json("canteen_locations", "knowledge_grounded", domains=["canteen"]),
-            "学校食堂可以先按南北校区大概记，具体楼层和窗口我不乱说，还是看校园地图更稳。[think]",
+            "学校食堂可以先按南北校区大概记：北校区有北秀、石榴红、浙大工程师学院食堂，南校区有二食堂、学苑和晨苑。具体楼层和窗口我不乱说，还是看校园地图更稳。[think]",
             "那北秀食堂具体在几号楼几层呀？",
         ])
 

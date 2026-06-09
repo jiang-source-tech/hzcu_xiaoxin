@@ -14,7 +14,7 @@ class BoundaryGuardTest(unittest.TestCase):
         self.assertTrue(KNOWLEDGE_FILE.exists())
         data = guard.load_campus_life()
         self.assertIn("canteens", data)
-        self.assertEqual(len(data["canteens"]), 5)
+        self.assertEqual(len(data["canteens"]), 6)
         self.assertIn("communication_channels", data)
         self.assertIn("爱城院", "".join(data["communication_channels"]["known"]))
 
@@ -51,9 +51,11 @@ class BoundaryGuardTest(unittest.TestCase):
         reply = guard.template_reply("小信，学校食堂都在哪里？每个食堂在几号楼几层？")
 
         self.assertIsNotNone(reply)
-        for canteen in ("北秀食堂", "晨苑餐厅", "学苑餐厅", "二食堂", "石榴红餐厅"):
+        for canteen in ("北秀食堂", "石榴红餐厅", "浙大工程师学院食堂", "二食堂", "学苑餐厅", "晨苑餐厅"):
             with self.subTest(canteen=canteen):
                 self.assertIn(canteen, reply)
+        self.assertIn("北校区有北秀食堂、石榴红餐厅、浙大工程师学院食堂", reply)
+        self.assertIn("南校区有二食堂、学苑餐厅、晨苑餐厅", reply)
         self.assertNotIn("休闲餐厅", reply)
         self.assertIn("几号楼几层", reply)
         self.assertIn("不敢乱说", reply)
