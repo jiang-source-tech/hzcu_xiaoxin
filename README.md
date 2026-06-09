@@ -131,9 +131,8 @@ hzcu_ai_pet/
 
 ## 致谢
 
-本项目早期提示词组织参考过：
+本项目提示词组织参考过：
 
-- [自己.skill](https://github.com/notdog1998/yourself-skill)
 - [同事.skill](https://github.com/titanwings/colleague-skill)
 
 当前版本保留“小芯”自己的稳定 `SKILL.md` 主提示词，并将可变校园事实迁移到结构化知识库中，以减少缓存未命中和事实幻觉。
