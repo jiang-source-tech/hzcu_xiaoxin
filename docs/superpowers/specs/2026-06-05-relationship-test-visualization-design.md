@@ -1,8 +1,10 @@
 # 关系闭环可视化测试页设计
 
-## 当前实现状态（2026-06-05）
+> **归档说明**：本文档是历史设计记录。当前 `/relationship-test`、`/api/*/relationship-selfplay/*` 和关系闭环 CLI 已下线，原因是双 LLM 跨天自对话导致缓存未命中和成本不可控。日常小芯优化统一使用 `/test`，由人工审核语义偏差；不要按本文档重新启用关系闭环 Web 测试。
 
-当前关系闭环 Web 测试已经升级到 v2。对外只保留一个访问入口：
+## 历史实现状态（2026-06-05）
+
+当时关系闭环 Web 测试曾升级到 v2，并保留过一个访问入口：
 
 ```text
 http://localhost:5000/relationship-test
@@ -16,7 +18,7 @@ web/static/relationship-v2-test.html
 
 这是内部静态文件名，不是浏览器访问路径。
 
-当前页面是“每日 LLM 对话回放”：
+历史页面形态是“每日 LLM 对话回放”：
 
 - 用户模拟 LLM 根据 `web/scenes/*.json` 的角色卡和 intent 生成自然用户消息。
 - 小信 LLM 走真实 `/api/chat` 或 `/api/greeting` 管线。
@@ -24,19 +26,19 @@ web/static/relationship-v2-test.html
 - 质量裁判 LLM 对完整场景评分。
 - 页面按 day 展示用户 LLM、小信 LLM、阶段、主题、hook、表情、动作和违规解释。
 
-当前有效接口：
+这些接口现在已下线：
 
 ```text
-GET  /relationship-test
-GET  /api/v2/relationship-selfplay/scenes
-POST /api/v2/relationship-selfplay/run
+GET  /relationship-test                         # 当前返回 404
+GET  /api/v2/relationship-selfplay/scenes        # 当前返回 410
+POST /api/v2/relationship-selfplay/run           # 当前返回 410
 ```
 
-旧接口 `/api/relationship-selfplay/personas` 和 `/api/relationship-selfplay/run` 属于 v1 可视化方案；当前 v2 页面不使用它们。
+旧接口 `/api/relationship-selfplay/personas` 和 `/api/relationship-selfplay/run` 属于 v1 可视化方案，当前同样返回 410。
 
 ## 1. 设计目标
 
-现有 `/test` 页面用于观察一段 AI 自对话，而关系闭环测试关注的是“同一个用户跨天回来时，小信的关系状态如何变化”。因此需要一个新的可视化页面：
+现有 `/test` 页面用于观察一段 AI 自对话，而关系闭环测试关注的是“同一个用户跨天回来时，小信的关系状态如何变化”。当时设计过一个新的可视化页面：
 
 ```text
 /relationship-test
@@ -69,7 +71,7 @@ POST /api/v2/relationship-selfplay/run
   -> 展示打分和违规项
 ```
 
-新的 `/relationship-test`：
+历史 `/relationship-test` 设计：
 
 ```text
 选择一个关系 persona
@@ -424,13 +426,13 @@ cd web
 python app.py
 ```
 
-打开：
+历史打开方式：
 
 ```text
-http://localhost:5000/relationship-test
+# http://localhost:5000/relationship-test
 ```
 
-验证：
+历史验证目标（当前已无效，不要执行）：
 
 - `/relationship-test` 可以打开每日 LLM 对话回放页面。
 - `all` 能展示所有 `web/scenes/*.json` 场景。
@@ -438,12 +440,12 @@ http://localhost:5000/relationship-test
 - 拒绝旧话题场景不再持续追问旧 hook。
 - 竞赛兴趣新生面对源文件/联系人请求不越界。
 
-## 9. MVP 实现顺序
+## 9. 历史 MVP 实现顺序
 
-建议分 5 步：
+当时建议分 5 步；当前不要按这些步骤重新启用关系闭环测试：
 
 1. 使用 `scene_runner.py` 承载 v2 场景运行。
-2. 给 Flask 保留 `/relationship-test`，并提供 `/api/v2/relationship-selfplay/scenes`、`/api/v2/relationship-selfplay/run`。
+2. 历史目标：给 Flask 保留 `/relationship-test`，并提供 `/api/v2/relationship-selfplay/scenes`、`/api/v2/relationship-selfplay/run`。当前这些入口已下线。
 3. 使用 `web/static/relationship-v2-test.html` 作为可视化页面。
 4. 补后端 API 测试和前端结构测试。
 5. 手工跑浏览器页面，确认时间线和违规项展示清楚。
@@ -467,11 +469,11 @@ MVP 不做：
 - 支持把某条失败记录一键复制成回归测试用例。
 - 支持和现有 `/test` 统一入口，在测试页顶部用 tabs 切换“对话压测 / 关系闭环”。
 
-## 11. 验收标准
+## 11. 历史验收标准
 
-完成后应满足：
+以下标准只描述当时的目标；当前有效验收应以 `/test` 人工审核为准：
 
-- 浏览器访问 `/relationship-test` 可运行关系闭环测试。
+- 历史目标：浏览器访问 `/relationship-test` 可运行关系闭环测试。当前该入口返回 404。
 - 页面能展示每个 scene 的多日时间线。
 - 页面能展示 `state`、`next_hook`、`companion_action`。
 - 页面能明确标红违规项。

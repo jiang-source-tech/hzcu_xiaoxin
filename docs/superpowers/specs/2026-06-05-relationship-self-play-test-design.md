@@ -1,5 +1,7 @@
 # 关系闭环自对话测试设计
 
+> **归档说明**：本文档是历史设计记录。当前关系闭环 Web/API/CLI 入口已下线，真实双 LLM 自对话不再作为日常测试方式。后续语义审核与小芯优化以 `/test` 页面为准。
+
 ## 1. 测试目标
 
 当前项目已经有“小信关系闭环第一版”：`turn_analyzer`、`relationship_state`、`/api/greeting`、`/api/chat` 关系状态返回、Web 打开问候。
@@ -47,13 +49,13 @@ Day 8：用户拒绝旧话题，看小信是否尊重切换
 web/test_relationship_self_play.py
 ```
 
-推荐命令：
+历史命令（当前不要执行，CLI 已归档）：
 
 ```bash
-python test_relationship_self_play.py --persona anxious_prospective
-python test_relationship_self_play.py --persona competition_newbie
-python test_relationship_self_play.py --persona all
-python test_relationship_self_play.py --persona all --days 5
+# python test_relationship_self_play.py --persona anxious_prospective
+# python test_relationship_self_play.py --persona competition_newbie
+# python test_relationship_self_play.py --persona all
+# python test_relationship_self_play.py --persona all --days 5
 ```
 
 CLI 版先解决三个问题：
@@ -62,7 +64,7 @@ CLI 版先解决三个问题：
 - 直接读取和检查 JSON 状态文件。
 - 输出结构化报告，方便后续接入可视化页面。
 
-可视化页面可以作为第二阶段：
+历史第二阶段曾考虑可视化页面：
 
 ```text
 /relationship-test

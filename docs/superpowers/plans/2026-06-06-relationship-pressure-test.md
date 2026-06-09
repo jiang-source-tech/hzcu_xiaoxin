@@ -1,5 +1,7 @@
 # Relationship Pressure Test Implementation Plan
 
+> **Archived / do not execute:** This plan targets the now-disabled `/relationship-test` flow. Relationship Web/API/CLI self-play is archived for cost control because the dual-LLM loop produced high cache misses. Current implementation work should optimize Xiaoxin through `/test` instead.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Add regression, mixed, and pressure run modes to `/relationship-test` so each relationship-test day can contain many user-LLM and Xiaoxin-LLM turns while preserving the current deterministic regression path.

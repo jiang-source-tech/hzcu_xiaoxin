@@ -1,5 +1,7 @@
 # Relationship Loop v1 Design
 
+> **Archived:** This is a historical design note. The relationship self-play Web/API/CLI test surface is now disabled for cost control. Keep the relationship-state ideas as background only; daily Xiaoxin review should use `/test`.
+
 ## Purpose
 
 小芯的第一版核心对话优化目标，是让准新生到大一上阶段的用户在 3-5 轮互动内感到：

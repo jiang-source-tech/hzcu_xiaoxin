@@ -164,12 +164,12 @@ xiaoxin/
 │   ├── app.py                 # Flask 后端（加载 SKILL → 调 LLM API）
 │   ├── boundary_guard.py      # 边界防护：safe_reply + 模板回复 + 违规检测 + TTS 裁剪
 │   ├── relationship_state.py  # 关系状态：阶段、hook、每日问候策略
-│   ├── scene_runner.py        # 关系闭环 v2 场景执行器
+│   ├── scene_runner.py        # 关系闭环 v2 归档执行器（非日常入口）
 │   ├── turn_analyzer.py       # 用户消息分析
-│   ├── user_simulator.py      # 用户模拟 LLM
-│   ├── rule_evaluator.py      # 规则评估
-│   ├── quality_judge.py       # 质量裁判 LLM
-│   ├── scenes/                # 场景定义 JSON
+│   ├── user_simulator.py      # 关系闭环归档用户模拟器
+│   ├── rule_evaluator.py      # 归档规则评估器
+│   ├── quality_judge.py       # 归档质量裁判 LLM
+│   ├── scenes/                # 关系闭环归档场景 JSON
 │   ├── knowledge/             # 结构化知识库（campus_life、campus_directory 等）
 │   ├── static/                # 前端页面
 │   │   ├── index.html         # 聊天界面

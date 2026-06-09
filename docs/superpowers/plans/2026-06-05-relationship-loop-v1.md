@@ -1,5 +1,7 @@
 # Relationship Loop v1 Implementation Plan
 
+> **Archived / do not execute:** This historical plan predates the current cost-control decision. Relationship self-play Web/API/CLI tests are disabled; use `/test` for daily Xiaoxin review and optimization.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Build a light, testable relationship loop so Xiaoxin can remember one important user concern, greet users once per day with restraint, and migrate from prospective-student chat into early-freshman support.

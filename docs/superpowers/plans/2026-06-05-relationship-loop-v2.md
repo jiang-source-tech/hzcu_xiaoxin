@@ -1,5 +1,7 @@
 # 关系闭环自对话测试 v2 实现计划
 
+> **归档 / 不要执行**：本计划面向已下线的关系闭环三 LLM 测试链路。当前 `/relationship-test`、relationship self-play API 和 CLI 已禁用；后续优化请基于 `/test` 的人工审核结果推进。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax.
 
 **Goal:** 用三 LLM 架构（用户模拟 LLM + 小信真实管线 + 质量裁判 LLM）替换 v1 的硬编码 persona 和关键词匹配假回复，使关系闭环测试能反应真实场景。
@@ -1562,12 +1564,13 @@ git commit -m "feat: 添加场景运行器核心编排模块"
 """关系闭环自对话测试 v2 CLI.
 
 用法:
-    python test_relationship_v2.py                           # 跑所有场景
-    python test_relationship_v2.py --scene anxious_prospective
-    python test_relationship_v2.py --seed 42                  # 可复现
-    python test_relationship_v2.py --max-days 3               # 只跑前 N 天
-    python test_relationship_v2.py --skip-judge               # 跳过质量裁判
-    python test_relationship_v2.py --json                     # JSON 输出
+    历史示例，当前不要执行；关系闭环 CLI 已归档。
+    # python test_relationship_v2.py                           # 跑所有场景
+    # python test_relationship_v2.py --scene anxious_prospective
+    # python test_relationship_v2.py --seed 42                  # 可复现
+    # python test_relationship_v2.py --max-days 3               # 只跑前 N 天
+    # python test_relationship_v2.py --skip-judge               # 跳过质量裁判
+    # python test_relationship_v2.py --json                     # JSON 输出
 """
 
 from __future__ import annotations
@@ -1845,7 +1848,8 @@ git commit -m "feat: 添加关系闭环v2集成测试"
 - [ ] **Step 1: 验证 CLI 帮助输出**
 
 ```bash
-cd web && python test_relationship_v2.py --help
+# 历史验证命令，当前不要执行；CLI 已归档。
+# cd web && python test_relationship_v2.py --help
 ```
 Expected: 显示所有选项和可用场景列表
 

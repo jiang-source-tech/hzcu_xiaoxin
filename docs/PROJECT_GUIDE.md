@@ -87,7 +87,7 @@ hzcu_xiaoxin/
 - `web/app.py`：Flask 后端、LLM 调用、会话持久化、自对话测试接口。
 - `web/boundary_guard.py`：确定性边界防护、模板回复、违规检测、TTS 文本裁剪。
 - `web/relationship_state.py`：关系闭环状态、阶段、next hook 和每日问候策略。
-- `web/scene_runner.py`：关系闭环 v2 场景执行器，驱动用户模拟 LLM、小芯管线、状态记录和记忆审计。
+- `web/scene_runner.py`：关系闭环 v2 归档执行器；当前 Web/API/CLI 入口已下线，不作为日常测试链路。
 - `web/static/index.html`：正常聊天页面。
 - `web/static/test.html`：可视化 AI 自对话测试页面。
 - `web/static/relationship-v2-test.html`：关系闭环测试归档页；当前没有 Web 访问入口。
@@ -282,16 +282,16 @@ python app.py
 
 相关文件：
 
-- `web/scenes/*.json`：关系闭环 v2 场景，包含角色卡、day、action、intent、probes。
-- `web/user_simulator.py`：用户模拟 LLM，根据角色卡和 intent 生成自然用户消息。
+- `web/scenes/*.json`：关系闭环 v2 归档场景，包含角色卡、day、action、intent、probes。
+- `web/user_simulator.py`：关系闭环归档用户模拟 LLM，根据角色卡和 intent 生成自然用户消息。
 - `web/turn_analyzer.py`：从用户消息里识别阶段、情绪、主题和 next hook。
 - `web/relationship_state.py`：保存 `user_stage`、`recent_topic`、`next_hook`、问候日期等关系状态。
-- `web/rule_evaluator.py`：检查 forbidden phrases、状态探针、内容探针和问候类型。
-- `web/quality_judge.py`：质量裁判 LLM，输出接续自然度、分寸感、情绪承接、阶段感知、边界安全评分。
-- `web/scene_runner.py`：串联场景执行、状态读取、记忆审计、规则评估和 SSE 事件。规则评估结果保留在后端数据中，但 `/relationship-test` 页面不再展示系统判定。
-- `web/static/relationship-v2-test.html`：每日 LLM 对话回放页面。
+- `web/rule_evaluator.py`：归档规则评估器，检查 forbidden phrases、状态探针、内容探针和问候类型。
+- `web/quality_judge.py`：归档质量裁判 LLM，输出接续自然度、分寸感、情绪承接、阶段感知、边界安全评分。
+- `web/scene_runner.py`：归档场景执行器，串联场景执行、状态读取、记忆审计、规则评估和 SSE 事件。
+- `web/static/relationship-v2-test.html`：归档的每日 LLM 对话回放页面，没有当前 Web 入口。
 
-页面当前展示：
+历史页面曾展示：
 
 - 每天的用户 LLM 消息和小芯 LLM 回复。
 - 每轮后的阶段、主题、hook、表情、动作状态条。
@@ -332,7 +332,7 @@ python app.py
 - 关系状态记忆用于近期连续性，比如 `core_concern=担心信电课程跟不上`、`next_hook=course_rhythm active`。
 - 长期 memory 用于身份、专业、目标、兴趣等更稳定的信息。
 - 食堂口味、排队、人流、报考犹豫等不应写入长期 memory。
-- relationship-test 使用临时 data 目录，审计结果不会污染真实用户记忆。
+- 历史 relationship-test 使用临时 data 目录，审计结果不会污染真实用户记忆。
 
 归档注意事项：
 

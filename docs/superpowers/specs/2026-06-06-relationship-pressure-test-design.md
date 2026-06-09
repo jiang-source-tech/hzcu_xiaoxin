@@ -1,5 +1,7 @@
 # Relationship Test Pressure Mode Design
 
+> **Archived:** This design is historical. `/relationship-test`, `/api/*/relationship-selfplay/*`, and the relationship-test CLI are currently disabled because the dual-LLM loop caused high cache misses and uncontrolled cost. Do not implement or run this plan for daily testing. Current Xiaoxin optimization should use `/test` with human semantic review.
+
 Date: 2026-06-06
 
 ## Goal
@@ -52,7 +54,7 @@ The implementation should stay within the current v2 relationship-test architect
 - Quality judge: `web/quality_judge.py`
 - Scene data: `web/scenes/*.json`
 
-No new web framework or separate route is needed. `/relationship-test` remains the single entry point.
+Historical design note: no new web framework or separate route was planned, and `/relationship-test` was intended to remain the single entry point. This no longer applies because the entry point is now disabled.
 
 ## Data Flow
 
@@ -184,9 +186,9 @@ Tests should cover:
 - Do not require every existing scene JSON file to be rewritten before the feature works.
 - Do not add a second quality-judge pass per day in the first version.
 
-## Success Criteria
+## Historical Success Criteria
 
-After this change, a reviewer should be able to open `/relationship-test`, choose `mixed`, set `turns_per_day` to `12`, run a scene across several days, and inspect whether Xiaoxin:
+At the time, this design expected a reviewer to open `/relationship-test`, choose `mixed`, set `turns_per_day` to `12`, run a scene across several days, and inspect whether Xiaoxin. This is no longer a current success criterion; current review should use `/test`:
 
 - Remembers and resumes relevant concerns naturally.
 - Lets old topics fade when the user rejects them.
