@@ -200,6 +200,22 @@ def format_notice_channels() -> str:
     return "；".join(known)
 
 
+def format_college_activity_summary() -> str:
+    activities = load_campus_life().get("college_activities", {})
+    known = activities.get("known") or []
+    if not known:
+        return (
+            "我这里没有可靠的信电学院活动清单。具体活动建议看爱城院、学院官网/公众号、"
+            "年级群和辅导员通知。[think]"
+        )
+
+    examples = "；".join(known[:5])
+    return (
+        f"公开资料里能看到的类型还挺多：{examples}。"
+        "不过我看不到实时活动清单，具体哪天办、怎么报名，还是看爱城院、学院官网/公众号、年级群和辅导员通知更准。[smile]"
+    )
+
+
 def strip_reasoning_artifacts(text: str) -> str:
     """Remove leaked chain-of-thought markers before rendering or saving."""
     clean = text or ""
@@ -286,6 +302,13 @@ def classify_message(user_msg: str) -> str:
     if notice_context and notice_question:
         return "notice_channels"
 
+    activity_context = contains_any(text, (
+        "校园活动", "学院活动", "信电活动", "活动多", "活动多不多", "平时活动",
+        "有什么活动", "哪些活动", "了解活动", "学生组织", "学生活动",
+    ))
+    if activity_context:
+        return "college_activities"
+
     if contains_any(text, ("缴费", "交学费", "选课", "退课", "补考报名", "转专业手续", "请假流程")):
         return "official_process"
 
@@ -358,6 +381,9 @@ def template_reply(user_msg: str) -> str | None:
             f"一般可以先看这几类渠道：{channels}。"
             "但我看不到实时通知内容，具体时间、地点和报名要求还是以最新正式通知为准。[think]"
         )
+
+    if category == "college_activities":
+        return format_college_activity_summary()
 
     if category == "private_records":
         return (

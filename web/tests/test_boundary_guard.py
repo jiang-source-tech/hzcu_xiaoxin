@@ -120,6 +120,19 @@ class BoundaryGuardTest(unittest.TestCase):
         self.assertIn("辅导员", reply)
         self.assertIn("实时通知内容", reply)
 
+    def test_college_activity_template_uses_verified_activity_types(self):
+        reply = guard.template_reply("小芯，你们信电学院平时的校园活动多不多呀？我也想多了解了解。")
+
+        self.assertIsNotNone(reply)
+        self.assertIn("公开资料", reply)
+        self.assertIn("迎新派对", reply)
+        self.assertIn("青芯沙龙", reply)
+        self.assertIn("蓝桥杯", reply)
+        self.assertIn("劳模工匠", reply)
+        self.assertIn("爱城院", reply)
+        self.assertNotIn("科技文化节", reply)
+        self.assertNotIn("机器人去操场", reply)
+
     def test_official_contact_template_refuses_to_fetch_contacts(self):
         reply = guard.template_reply("你能帮我问一下实验中心的联系方式吗？")
 
