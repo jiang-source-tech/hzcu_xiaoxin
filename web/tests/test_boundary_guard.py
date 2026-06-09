@@ -15,6 +15,8 @@ class BoundaryGuardTest(unittest.TestCase):
         data = guard.load_campus_life()
         self.assertIn("canteens", data)
         self.assertEqual(len(data["canteens"]), 5)
+        self.assertIn("communication_channels", data)
+        self.assertIn("爱城院", "".join(data["communication_channels"]["known"]))
 
     def test_speech_text_cuts_only_at_sentence_boundaries(self):
         text = "第一句完整。第二句也完整！第三句还完整。第四句继续。第五句不要播到一半。"
@@ -92,6 +94,18 @@ class BoundaryGuardTest(unittest.TestCase):
         self.assertIsNotNone(reply)
         self.assertIn("官方流程", reply)
         self.assertIn("正式通知", reply)
+        self.assertIn("爱城院", reply)
+        self.assertIn("年级群", reply)
+
+    def test_campus_notice_template_mentions_real_student_channels(self):
+        reply = guard.template_reply("小芯，扫新通知一般在哪里看啊？是学院公众号还是教务处？")
+
+        self.assertIsNotNone(reply)
+        self.assertIn("爱城院", reply)
+        self.assertIn("活动通知", reply)
+        self.assertIn("年级群", reply)
+        self.assertIn("辅导员", reply)
+        self.assertIn("实时通知内容", reply)
 
     def test_official_contact_template_refuses_to_fetch_contacts(self):
         reply = guard.template_reply("你能帮我问一下实验中心的联系方式吗？")

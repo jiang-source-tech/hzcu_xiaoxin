@@ -147,6 +147,14 @@ def format_canteen_public_details() -> str:
     return "；".join(details)
 
 
+def format_notice_channels() -> str:
+    channels = load_campus_life().get("communication_channels", {})
+    known = channels.get("known") or []
+    if not known:
+        return "学校/学院正式通知、教务系统、辅导员或相关负责老师"
+    return "；".join(known)
+
+
 def strip_reasoning_artifacts(text: str) -> str:
     """Remove leaked chain-of-thought markers before rendering or saving."""
     clean = text or ""
@@ -225,6 +233,14 @@ def classify_message(user_msg: str) -> str:
     if contains_any(text, ("成绩", "查分", "绩点", "期末分", "考试分")):
         return "private_records"
 
+    notice_context = contains_any(text, (
+        "通知", "活动", "报名", "扫新", "招新", "在哪看", "哪里看", "哪里通知",
+        "公众号", "爱城院", "年级群", "班级群", "群里",
+    ))
+    notice_question = contains_any(text, ("哪里", "在哪", "看", "通知", "公众号", "群", "爱城院"))
+    if notice_context and notice_question:
+        return "notice_channels"
+
     if contains_any(text, ("缴费", "交学费", "选课", "退课", "补考报名", "转专业手续", "请假流程")):
         return "official_process"
 
@@ -291,6 +307,13 @@ def template_reply(user_msg: str) -> str | None:
             "建议关注学院、实验室、竞赛组的公开通知，或者问竞赛负责老师；入门准备我倒是可以陪你拆。[think]"
         )
 
+    if category == "notice_channels":
+        channels = format_notice_channels()
+        return (
+            f"一般可以先看这几类渠道：{channels}。"
+            "但我看不到实时通知内容，具体时间、地点和报名要求还是以最新正式通知为准。[think]"
+        )
+
     if category == "private_records":
         return (
             "成绩和绩点我查不了，也不能替教务系统说结果。这个要以教务系统或老师正式通知为准；"
@@ -298,9 +321,10 @@ def template_reply(user_msg: str) -> str | None:
         )
 
     if category == "official_process":
+        channels = format_notice_channels()
         return (
-            "这个属于官方流程或实时安排，我不能替正式通知说准。最好看学校/学院通知、教务系统，"
-            "或者问辅导员和相关负责老师；我可以帮你把要问的问题理一理。[think]"
+            f"这个属于官方流程或实时安排，我不能替正式通知说准。你可以先看：{channels}；"
+            "必要时再问辅导员和相关负责老师。我可以帮你把要问的问题理一理。[think]"
         )
 
     if category == "official_contact":
