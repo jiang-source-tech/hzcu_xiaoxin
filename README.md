@@ -79,16 +79,6 @@ python tests/test_self_play.py --scenario boundary  # 边界测试
 python tests/test_self_play.py --scenario full      # 完整学期
 ```
 
-### 5. 关系闭环测试已归档
-
-`/relationship-test` 和 `/api/*/relationship-selfplay/*` 已下线，关系闭环 CLI 也只保留为历史归档入口，不再启动真实测试链路。
-
-日常语义审核统一使用：http://localhost:5000/test
-
-原因：关系闭环链路会让“用户模拟 LLM”和“小芯 LLM”互相对话，跨天状态、随机用户消息和重试会显著降低缓存命中率，成本不可控。后续小芯优化以 `/test` 的人工审核结果为准。
-
----
-
 ## 技术栈
 
 - **LLM**：DeepSeek V4 Flash（兼容 OpenAI API 格式）
@@ -114,7 +104,6 @@ python tests/test_self_play.py --scenario full      # 完整学期
 | 前置 | `prompts/hard_rules.md` | Layer 0 硬规则：反编造、诚实边界、价值观 |
 | 前置 | `app.py` `build_system_prompt()` | System prompt 尾部追加 ⚠️ 禁编造约束 |
 | 事后 | `boundary_guard.py` | 后置验证：违规检测 + 自动重试 → 兜底回复 + TTS 裁剪 |
-| 事后 | `rule_evaluator.py` | 场景探针检查 + forbidden phrases |
 
 违规检测覆盖：编造具体人物/竞赛/引语、承诺私人联系/代办、虚构真实经历、编造餐饮细节、报考预测、假设线下在场、**编造快递点/假设宿舍位置**、猜测用户位置、社交标签化、过度黏连关系表达，以及未核实的宿舍条件、社交统计、课程保障等。
 
@@ -164,17 +153,11 @@ xiaoxin/
 │   ├── app.py                 # Flask 后端（加载 SKILL → 调 LLM API）
 │   ├── boundary_guard.py      # 边界防护：safe_reply + 模板回复 + 违规检测 + TTS 裁剪
 │   ├── relationship_state.py  # 关系状态：阶段、hook、每日问候策略
-│   ├── scene_runner.py        # 关系闭环 v2 归档执行器（非日常入口）
 │   ├── turn_analyzer.py       # 用户消息分析
-│   ├── user_simulator.py      # 关系闭环归档用户模拟器
-│   ├── rule_evaluator.py      # 归档规则评估器
-│   ├── quality_judge.py       # 归档质量裁判 LLM
-│   ├── scenes/                # 关系闭环归档场景 JSON
 │   ├── knowledge/             # 结构化知识库（campus_life、campus_directory 等）
 │   ├── static/                # 前端页面
 │   │   ├── index.html         # 聊天界面
-│   │   ├── test.html          # 自对话测试页
-│   │   └── relationship-v2-test.html # 关系闭环归档页（无 Web 入口）
+│   │   └── test.html          # 自对话测试页
 │   ├── tests/                 # 单元测试和回归测试
 │   └── requirements.txt
 └── docs/

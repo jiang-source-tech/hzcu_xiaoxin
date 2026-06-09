@@ -45,21 +45,7 @@ hzcu_xiaoxin/
     ├── app.py
     ├── boundary_guard.py
     ├── relationship_state.py
-    ├── scene_runner.py
     ├── turn_analyzer.py
-    ├── user_simulator.py
-    ├── rule_evaluator.py
-    ├── quality_judge.py
-    ├── relationship_self_play_runner.py
-    ├── scenes/
-    │   ├── anxious_prospective.json
-    │   ├── competition_newbie.json
-    │   ├── reject_old_topic.json
-    │   ├── boundary_probe.json
-    │   ├── socially_anxious.json
-    │   ├── campus_navigation.json
-    │   ├── campus_life_services.json
-    │   └── admin_boundary_mix.json
     ├── knowledge/
     │   ├── campus_life.json
     │   ├── student_affairs_qa.json
@@ -67,13 +53,9 @@ hzcu_xiaoxin/
     ├── static/
     │   ├── index.html
     │   ├── test.html
-    │   └── relationship-v2-test.html     # 关系闭环归档页，无 Web 入口
     ├── tests/
     │   ├── test_boundary_guard.py
-    │   ├── test_scene_runner.py
     │   ├── test_self_play.py
-    │   ├── test_relationship_v2.py
-    │   ├── test_relationship_self_play.py
     │   └── ...
     ├── requirements.txt
     └── test_results/
@@ -87,10 +69,8 @@ hzcu_xiaoxin/
 - `web/app.py`：Flask 后端、LLM 调用、会话持久化、自对话测试接口。
 - `web/boundary_guard.py`：确定性边界防护、模板回复、违规检测、TTS 文本裁剪。
 - `web/relationship_state.py`：关系闭环状态、阶段、next hook 和每日问候策略。
-- `web/scene_runner.py`：关系闭环 v2 归档执行器；当前 Web/API/CLI 入口已下线，不作为日常测试链路。
 - `web/static/index.html`：正常聊天页面。
 - `web/static/test.html`：可视化 AI 自对话测试页面。
-- `web/static/relationship-v2-test.html`：关系闭环测试归档页；当前没有 Web 访问入口。
 - `web/tests/`：单元测试和回归测试。
 - `web/knowledge/campus_life.json`：结构化校园生活知识，用于食堂、宿舍、交通、快递、穿衣等可确定场景。
 - `web/knowledge/student_affairs_qa.json`：学生事务问答知识，用于命中度较高的官方流程类问题；回答后仍提示用户办事前向辅导员或官方渠道确认。
@@ -135,7 +115,7 @@ python app.py
 - 正常聊天页：http://localhost:5000
 - 自对话测试页：http://localhost:5000/test
 
-`/relationship-test`、`/relationship-v2-test` 和 relationship self-play API 已下线。日常语义审核统一使用 `/test`，由审核者选择角色和轮数后人工判断小芯语义是否偏差。
+日常语义审核统一使用 `/test`，由审核者选择角色和轮数后人工判断小芯语义是否偏差。
 
 ## 4. 正常聊天链路
 
@@ -226,121 +206,6 @@ python app.py
 - 前端初始发言：`web/static/test.html` 中的 `personaOpenings`。
 
 当前这两处仍有重复配置。后续如果继续扩展，建议抽成 `selfplay_personas.json` 或 `selfplay_personas.py`，由前后端共享同一份配置。
-
-## 6. 关系闭环测试归档
-
-关系闭环测试链路已归档，不再作为日常测试入口。`/relationship-test` 返回 404，v1/v2 relationship self-play API 返回 410，CLI 入口会直接提示已下线并退出。
-
-归档原因：该链路会让“用户模拟 LLM”和“小芯 LLM”跨天互相对话，状态摘要、随机用户消息和越界重试都会降低缓存命中率，成本不可控。后续小芯语义优化统一以 `/test` 的人工审核结果为准。
-
-下面内容仅保留为历史实现说明：
-
-```text
-场景 JSON
-  -> 用户模拟 LLM 生成自然用户消息
-  -> 小芯真实管线处理 /api/chat 或 /api/greeting
-  -> 后端记录状态迁移、边界检测结果和记忆审计快照
-  -> Web 页面按天回放用户 LLM / 小芯 LLM 的详细对话，供人工审核
-```
-
-### 场景剧本 day 随机化
-
-场景 JSON 中 `episodes[].day` 支持两种格式：
-
-- **固定整数** `"day": 0` — 每次运行时间线完全一致，适合回归测试
-- **随机范围** `"day": [min, max]` — 用 seed 在 `[min, max]` 范围内随机解析整数，相同 seed 可复现。第一个 episode 的 day 始终固定为 min 值（锚点），后续 episode 的 day 保证非递减。
-
-示例（`anxious_prospective.json`）：
-
-```json
-{
-  "episodes": [
-    { "day": 0,      "action": "chat", ... },
-    { "day": [1, 3], "action": "greeting", ... },
-    { "day": [1, 3], "action": "greeting", ... },
-    { "day": [5, 14],"action": "chat", ... },
-    { "day": [6, 16],"action": "chat", ... }
-  ]
-}
-```
-
-随机化由 `scene_runner.resolve_episode_days()` 在场景执行前完成，不影响 JSON 文件本身。
-
-### 运行模式
-
-- **regression**（默认）：走脚本化 intent，每轮按 scene JSON 中定义的 intent 和 followup_intents 精确执行
-- **pressure**：忽略脚本化 intent，改为统一压力目标，每天跑 `turns_per_day` 轮自由对话
-- **mixed**：先跑脚本化 intent，剩余轮次用 pressure 目标补满 `turns_per_day`
-
-历史入口状态：
-
-- 页面：`GET /relationship-test` 已下线，返回 404。
-- v2 场景列表：`GET /api/v2/relationship-selfplay/scenes` 已下线，返回 410。
-- v2 运行测试：`POST /api/v2/relationship-selfplay/run` 已下线，返回 410。
-- v1 API：`/api/relationship-selfplay/*` 已下线，返回 410。
-- CLI：`python tests/test_relationship_v2.py --scene anxious_prospective` 已下线，只提示使用 `/test`。
-
-相关文件：
-
-- `web/scenes/*.json`：关系闭环 v2 归档场景，包含角色卡、day、action、intent、probes。
-- `web/user_simulator.py`：关系闭环归档用户模拟 LLM，根据角色卡和 intent 生成自然用户消息。
-- `web/turn_analyzer.py`：从用户消息里识别阶段、情绪、主题和 next hook。
-- `web/relationship_state.py`：保存 `user_stage`、`recent_topic`、`next_hook`、问候日期等关系状态。
-- `web/rule_evaluator.py`：归档规则评估器，检查 forbidden phrases、状态探针、内容探针和问候类型。
-- `web/quality_judge.py`：归档质量裁判 LLM，输出接续自然度、分寸感、情绪承接、阶段感知、边界安全评分。
-- `web/scene_runner.py`：归档场景执行器，串联场景执行、状态读取、记忆审计、规则评估和 SSE 事件。
-- `web/static/relationship-v2-test.html`：归档的每日 LLM 对话回放页面，没有当前 Web 入口。
-
-历史页面曾展示：
-
-- 每天的用户 LLM 消息和小芯 LLM 回复。
-- 每轮后的阶段、主题、hook、表情、动作状态条。
-- 每轮的记忆审计面板：展示 relationship 关系状态记忆、长期 memory 写入事件和当前长期 memory 列表。
-- 最后一轮 chat 后的人工审核区：展示场景意图和人工勾选项。
-
-页面不展示系统 PASS / WARN / FAIL、规则违规红条或质量裁判评分；这些自动判断容易误伤真实对话，只作为后端调试数据保留。
-
-### 记忆审计字段
-
-`web/scene_runner.py` 会为每个 chat episode 附加 `memory_audit`，用于给人工审核提供记忆事实快照。它不是新的持久化数据，而是测试运行时从临时 `relationship_{user_id}.json` 和 `memory_{user_id}.json` 中抽取的审计快照。
-
-`memory_audit` 结构：
-
-```json
-{
-  "relationship_before": {},
-  "turn_analysis": {},
-  "relationship_after": {},
-  "relationship_changes": [],
-  "long_term_memories": [],
-  "memory_events": [],
-  "audit_flags": []
-}
-```
-
-字段含义：
-
-- `relationship_before` / `relationship_after`：本轮前后的关系状态快照，包含 `user_stage`、`recent_mood`、`recent_topic`、`core_concern`、`growth_intent`、`next_hook` 等。
-- `turn_analysis`：`turn_analyzer.analyze()` 对用户消息的判断，包括是否值得记忆、记忆类型、主题、情绪和接续 hook。
-- `relationship_changes`：关系状态中发生变化的字段，方便看小芯是否把“担心课程”“竞赛兴趣”等线索写入关系状态。
-- `long_term_memories`：当前 `memory_{user_id}.json` 中的长期记忆摘要，包含 `content`、`type`、`importance`、`strength`、`status`。
-- `memory_events`：本轮新增、更新或删除的长期记忆事件。
-- `audit_flags`：后端调试用审计提示，例如“关系记忆已更新”“长期记忆正确跳过”“本轮不应写长期记忆但 memory 文件发生变化”。`/relationship-test` 页面不展示该字段。
-
-审计口径：
-
-- 关系状态记忆用于近期连续性，比如 `core_concern=担心信电课程跟不上`、`next_hook=course_rhythm active`。
-- 长期 memory 用于身份、专业、目标、兴趣等更稳定的信息。
-- 食堂口味、排队、人流、报考犹豫等不应写入长期 memory。
-- 历史 relationship-test 使用临时 data 目录，审计结果不会污染真实用户记忆。
-
-归档注意事项：
-
-- 不要通过 Web、API 或 CLI 运行关系闭环真实 LLM 测试。
-- 关系闭环底层模块和场景 JSON 暂时保留，主要用于历史参考和已有单元测试。
-- 成本/缓存注意：真实运行会同时调用用户模拟 LLM 和小芯 LLM，越界重试还会增加调用；不同 day、状态摘要和随机用户消息会降低 DeepSeek 缓存命中率。
-- `pre_enrollment` 是合法阶段，含义是“准备入学”；如果测试期望与实际阶段不一致，应由人工结合对话内容和状态条判断。
-- `/relationship-v2-test` 不是访问入口，访问会返回 404。
 
 ## 7. System Prompt 组成
 
@@ -600,26 +465,6 @@ python tools/meta_manager.py --action load --data-dir data --user-id xiaoming --
 - `/test` 的用户侧是 AI 模拟的，目的是压力测试。
 - 如果发现用户侧失真，优先修改 `personaOpenings` 和 `STUDENT_PERSONAS`。
 
-### 11.3 关系闭环测试归档页
-
-文件：`web/static/relationship-v2-test.html`
-
-访问入口：无。`/relationship-test` 已下线并返回 404。
-
-历史职责：
-
-- 选择关系闭环 v2 场景。
-- 可选填写 seed，便于复现实验。
-- 调用 `/api/v2/relationship-selfplay/run`，用流式事件展示测试进度。
-- 按 day 展示用户模拟 LLM 和小芯 LLM 的完整对话。
-- 展示每轮后的 `user_stage`、`recent_topic`、`next_hook`、表情和动作。
-- 展示每轮记忆审计面板，并提供人工审核区；不展示系统规则判定和质量裁判评分。
-
-注意：
-
-- `/relationship-test` 和 `/relationship-v2-test` 都不是当前入口，不要在文档或页面中继续引导用户访问。
-- 静态文件名暂时保留 `relationship-v2-test.html`，作为历史实现归档；日常测试使用 `/test`。
-
 ## 12. 测试体系
 
 运行所有 web 测试：
@@ -634,10 +479,6 @@ python -m pytest web\tests -q
 - `test_selfplay_end.py`：自对话 API、模拟用户人格、fallback、边界重试。
 - `test_selfplay_openings.py`：`/test` 页面角色和开场白。
 - `test_selfplay_layout.py`：测试页布局和违规展示。
-- `test_relationship_v2_page.py`：断言 `/relationship-test` 和 `/relationship-v2-test` 已下线。
-- `test_scene_runner.py`：关系闭环 v2 场景加载、随机化 day 解析、流式 episode 元数据、`memory_audit` 和综合结果。
-- `test_rule_evaluator.py`：规则评估器 probe 检查（阶段、hook、内容探针）。
-- `test_user_simulator.py`：用户模拟 LLM 的消息生成（正常 + pressure 模式）。
 - `test_relationship.py`：关系状态加载/保存/更新/prompt_summary。
 - `test_skill_boundaries.py`：`SKILL.md` 中必须存在的边界规则。
 
@@ -647,7 +488,6 @@ python -m pytest web\tests -q
 - 改小芯长期设定时，补 `test_skill_boundaries.py`。
 - 改 `/test` 用户角色时，补 `test_selfplay_end.py` 和 `test_selfplay_openings.py`。
 - 改前端测试页布局时，补 `test_selfplay_layout.py`。
-- 如需重新启用关系闭环测试，必须先明确成本策略，再恢复 Web/API/CLI 入口并补对应测试。
 
 ## 13. 常见修改场景
 
@@ -720,8 +560,6 @@ python -m unittest web.tests.test_selfplay_openings
 
 - 小芯边界防护集中在 `boundary_guard.py`（含编造人物/竞赛/引语检测、地点事实核查）。
 - guard 从前置拦截改为后置验证后，模型回复质量大幅提升；`template_reply` 仅作为 fallback 安全网。
-- `chat_core()` 支持可选 `history` 参数，v2 场景测试可传入同日对话历史，让模型理解追问上下文。
-- 关系闭环各组件职责分离：`scene_runner.py`（编排）、`user_simulator.py`（模拟）、`rule_evaluator.py`（规则）、`quality_judge.py`（裁判）。
 - Flask 路由通过 guard 函数调用边界层，依赖方向清晰。
 - 小芯主 prompt 统一由 `build_system_prompt()` 构建，正常聊天和 `/test` 复用同一逻辑。
 
@@ -764,7 +602,6 @@ python -m unittest discover -s web\tests
 - `http://localhost:5000` 正常聊天可用。
 - `http://localhost:5000/test` 可选择每个角色并完成多轮对话。
 - 评估面板能显示违规项。
-- `http://localhost:5000/relationship-test` 保持下线，不作为日常测试入口。
 - 日志中没有真实 API key 或隐私数据。
 - `.env` 和运行时 `data/` 没有被提交。
 

@@ -11,17 +11,14 @@ import os
 import re
 import subprocess
 import sys
-import tempfile
 from pathlib import Path
 
 from dotenv import load_dotenv
-from flask import Flask, Response, abort, jsonify, render_template, request
+from flask import Flask, jsonify, render_template, request
 from openai import OpenAI
 
 import boundary_guard as guard
-import relationship_self_play_runner as relationship_runner
 import relationship_state
-import scene_runner as scene_runner_v2
 import turn_analyzer
 
 load_dotenv()
@@ -337,13 +334,13 @@ def _sync_meta_profile(user_id: str, user_msg: str, mem_type: str):
 
 # ─── 会话持久化 ──────────────────────────────────────────────────────────
 
-# ─── 内部核心函数（供路由和 v2 测试共用）─────────────────────────────
+# ─── 内部核心函数（供路由和自对话测试共用）─────────────────────────────
 
 
 def chat_core(user_id: str, user_msg: str, data_dir: str | None = None, history: list[dict] | None = None) -> dict:
     """核心聊天管线：加载状态 → 分析 → 调用 DeepSeek → 保存状态 → 返回 payload。
 
-    供 /api/chat 路由和 scene_runner v2 流式测试共用。
+    供 /api/chat 路由和 /api/selfplay/turn 共用。
     history: 可选的对话历史，格式 [{"role": "user"|"assistant", "content": "..."}, ...]
     """
     data_path = Path(data_dir) if data_dir else DATA_DIR
@@ -825,56 +822,6 @@ def test_page():
     return app.send_static_file("test.html")
 
 
-@app.route("/relationship-test")
-def relationship_test_page():
-    abort(404)
-
-
-@app.route("/api/relationship-selfplay/personas", methods=["GET"])
-def relationship_selfplay_personas():
-    return jsonify({"error": "relationship-test 已下线；请使用 /test 进行日常对话压测。"}), 410
-
-
-@app.route("/api/relationship-selfplay/run", methods=["POST"])
-def relationship_selfplay_run():
-    return jsonify({"error": "relationship-test 已下线；请使用 /test 进行日常对话压测。"}), 410
-
-    data = request.get_json(silent=True) or {}
-    persona = str(data.get("persona", "")).strip()
-    live = bool(data.get("live", False))
-    show_app_log = bool(data.get("show_app_log", False))
-    raw_days = data.get("days")
-
-    if not persona or persona == "all":
-        return jsonify({"error": "请选择单个 persona 运行；全场景测试已禁用。"}), 400
-    if persona not in relationship_runner.PERSONAS:
-        return jsonify({"error": f"未知 persona: {persona}"}), 400
-
-    max_days = None
-    if raw_days not in (None, "", "all"):
-        try:
-            max_days = int(raw_days)
-        except (TypeError, ValueError):
-            return jsonify({"error": "days 必须是整数或空值"}), 400
-
-    if live and API_KEY in ("", "test-key"):
-        return jsonify({"error": "真实模型模式需要有效的 DEEPSEEK_API_KEY"}), 400
-
-    with tempfile.TemporaryDirectory(prefix="xiaoxin_relationship_web_") as tmp:
-        try:
-            report = relationship_runner.run_suite(
-                persona,
-                Path(tmp),
-                live=live,
-                max_days=max_days,
-                show_app_log=show_app_log,
-            )
-        except Exception as exc:
-            return jsonify({"error": f"关系闭环测试运行失败: {exc}"}), 500
-
-    return jsonify(report)
-
-
 @app.route("/api/selfplay/turn", methods=["POST"])
 def selfplay_turn():
     """执行一轮对话：新生说话 → 小芯回复。返回两条消息。"""
@@ -1048,96 +995,6 @@ def selfplay_evaluate():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-
-# ─── v2 关系闭环自对话测试路由 ─────────────────────────────────────────
-
-
-@app.route("/api/v2/relationship-selfplay/scenes", methods=["GET"])
-def v2_relationship_scenes():
-    return jsonify({"error": "relationship-test 已下线；请使用 /test 进行日常对话压测。"}), 410
-
-    scenes = scene_runner_v2.load_all_scenes()
-    summaries = [
-        {
-            "scene_id": s["scene_id"],
-            "name": s.get("name", s["scene_id"]),
-            "description": s.get("description", ""),
-            "episode_count": len(s["episodes"]),
-        }
-        for s in scenes
-    ]
-    return jsonify({"scenes": summaries})
-
-
-@app.route("/api/v2/relationship-selfplay/run", methods=["POST"])
-def v2_relationship_run():
-    """SSE 流式返回关系闭环测试结果。"""
-    return jsonify({"error": "relationship-test 已下线；请使用 /test 进行日常对话压测。"}), 410
-
-    data = request.get_json(silent=True) or {}
-    scene_id = str(data.get("scene", "")).strip()
-    if not scene_id or scene_id == "all":
-        return jsonify({"error": "请选择单个场景运行；全场景测试已禁用。"}), 400
-    raw_seed = data.get("seed")
-    seed = int(raw_seed) if raw_seed is not None else None
-    skip_judge = bool(data.get("skip_judge", False))
-    raw_max_days = data.get("max_days")
-    max_days = int(raw_max_days) if raw_max_days is not None else None
-    mode = str(data.get("mode", "regression")).strip() or "regression"
-    valid_modes = {"regression", "mixed", "pressure"}
-    if mode not in valid_modes:
-        return jsonify({"error": "mode must be one of: regression, mixed, pressure"}), 400
-
-    raw_turns_per_day = data.get("turns_per_day")
-    turns_per_day = None
-    if raw_turns_per_day not in (None, "", "default"):
-        if isinstance(raw_turns_per_day, bool):
-            return jsonify({"error": "turns_per_day must be a positive integer"}), 400
-        if isinstance(raw_turns_per_day, int):
-            turns_per_day = raw_turns_per_day
-        elif isinstance(raw_turns_per_day, str):
-            stripped_turns_per_day = raw_turns_per_day.strip()
-            if not stripped_turns_per_day.lstrip("-+").isdigit():
-                return jsonify({"error": "turns_per_day must be a positive integer"}), 400
-            turns_per_day = int(stripped_turns_per_day)
-        else:
-            return jsonify({"error": "turns_per_day must be a positive integer"}), 400
-        if turns_per_day < 1 or turns_per_day > 30:
-            return jsonify({"error": "turns_per_day must be between 1 and 30"}), 400
-
-    def save_test_memory(uid, msg, reply, dd):
-        old_data_dir = globals()["DATA_DIR"]
-        globals()["DATA_DIR"] = Path(dd)
-        try:
-            return auto_save_memory(uid, msg, reply)
-        finally:
-            globals()["DATA_DIR"] = old_data_dir
-
-    def generate():
-        try:
-            for event in scene_runner_v2.run_scene_streaming(
-                scene_id=scene_id,
-                seed=seed,
-                skip_quality_judge=skip_judge,
-                max_days=max_days,
-                mode=mode,
-                turns_per_day=turns_per_day,
-                chat_fn=lambda uid, msg, dd, history=None: chat_core(uid, msg, dd, history=history),
-                memory_fn=save_test_memory,
-                greeting_fn=lambda uid, today, dd: relationship_state.greeting_payload(
-                    Path(dd), uid, today=today
-                ),
-            ):
-                yield f"event: {event['event']}\n"
-                yield f"data: {json.dumps(event['data'], ensure_ascii=False)}\n\n"
-        except ValueError as exc:
-            yield f"event: error\n"
-            yield f"data: {json.dumps({'message': str(exc)}, ensure_ascii=False)}\n\n"
-        except Exception as exc:
-            yield f"event: error\n"
-            yield f"data: {json.dumps({'message': f'运行失败: {exc}'}, ensure_ascii=False)}\n\n"
-
-    return Response(generate(), mimetype="text/event-stream")
 
 
 if __name__ == "__main__":
