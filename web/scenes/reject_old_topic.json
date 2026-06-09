@@ -10,7 +10,7 @@
     {
       "day": 0,
       "action": "chat",
-      "intent": "你对大学课程有点担心，跟小信聊聊。",
+      "intent": "你对大学课程有点担心，跟小芯聊聊。",
       "probes": {
         "check_hook_topic": "course_rhythm",
         "check_hook_active": true
@@ -27,7 +27,7 @@
     {
       "day": 2,
       "action": "chat",
-      "intent": "你今天不想聊课程了。小信如果又提课程，你会直接说'别聊这个了'之类的话。",
+      "intent": "你今天不想聊课程了。小芯如果又提课程，你会直接说'别聊这个了'之类的话。",
       "probes": {
         "check_topic": "general_checkin",
         "check_hook_active": false

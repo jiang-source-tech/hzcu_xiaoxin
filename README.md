@@ -66,7 +66,6 @@ python app.py
 浏览器访问：
 - 聊天界面：http://localhost:5000
 - 自对话测试：http://localhost:5000/test
-- 关系闭环测试：http://localhost:5000/relationship-test
 
 ### 4. CLI 自对话测试
 
@@ -78,42 +77,15 @@ python tests/test_self_play.py --scenario meet      # 初次见面
 python tests/test_self_play.py --scenario struggle  # 学业困扰
 python tests/test_self_play.py --scenario boundary  # 边界测试
 python tests/test_self_play.py --scenario full      # 完整学期
-
-# 全部场景
-python tests/test_self_play.py --scenario all
 ```
 
-### 5. 关系闭环 v2 测试
+### 5. 关系闭环测试已归档
 
-关系闭环测试用于观察同一个用户跨天回来时，小芯的状态是否自然接续和迁移。
+`/relationship-test` 和 `/api/*/relationship-selfplay/*` 已下线，关系闭环 CLI 也只保留为历史归档入口，不再启动真实测试链路。
 
-场景剧本 `web/scenes/*.json` 中 `day` 支持两种格式：
-- **固定值**：`"day": 0` — 每次运行时间线完全一致（回归模式）
-- **随机范围**：`"day": [5, 14]` — 用 seed 在范围内随机解析，每次运行产生不同时间线
+日常语义审核统一使用：http://localhost:5000/test
 
-- Web 页面：http://localhost:5000/relationship-test
-- 页面形态：每日 LLM 对话回放，展示用户模拟 LLM、小芯 LLM、状态条、hook 和记忆审计面板
-
-```bash
-cd web
-
-# 运行全部关系闭环场景
-python tests/test_relationship_v2.py
-
-# 只运行一个场景
-python tests/test_relationship_v2.py --scene anxious_prospective
-
-# 指定 seed 复现时间线
-python tests/test_relationship_v2.py --scene anxious_prospective --seed 42
-
-# 跳过质量裁判 LLM
-python tests/test_relationship_v2.py --skip-judge
-
-# 压力模式
-python tests/test_relationship_v2.py --mode pressure --turns-per-day 5
-```
-
-费用提醒：`relationship_v2.py` 的真实运行会同时调用“用户模拟 LLM”和“小芯 LLM”，越界重试时还会增加额外调用；全场景 `--scene all` 会产生大量不同上下文，DeepSeek 缓存命中率较低。日常开发优先跑本地单元测试，人工审核优先使用 Web 页面或单个 scene；全场景真实 LLM 审计只建议在最终验收时运行。
+原因：关系闭环链路会让“用户模拟 LLM”和“小芯 LLM”互相对话，跨天状态、随机用户消息和重试会显著降低缓存命中率，成本不可控。后续小芯优化以 `/test` 的人工审核结果为准。
 
 ---
 
@@ -202,7 +174,7 @@ xiaoxin/
 │   ├── static/                # 前端页面
 │   │   ├── index.html         # 聊天界面
 │   │   ├── test.html          # 自对话测试页
-│   │   └── relationship-v2-test.html # 关系闭环回放页
+│   │   └── relationship-v2-test.html # 关系闭环归档页（无 Web 入口）
 │   ├── tests/                 # 单元测试和回归测试
 │   └── requirements.txt
 └── docs/

@@ -29,7 +29,8 @@ class UserSimulatorTest(unittest.TestCase):
         self.assertIn("偏内向", system)
         self.assertIn("对大学课程有点担心", system)
         self.assertIn("信电会不会很难", system)
-        self.assertIn("必须严格完成本轮任务", system)
+        self.assertIn("这轮你想表达的真实需求", system)
+        self.assertIn("不要复述上面的任务说明", system)
 
     def test_build_user_messages_includes_conversation_summary(self):
         messages = user_simulator.build_user_messages(
@@ -74,6 +75,16 @@ class UserSimulatorTest(unittest.TestCase):
             )
             self.assertNotIn("新生:", result)
 
+    def test_generate_user_message_rewrites_task_like_archive_phrase(self):
+        with patch("user_simulator._call_api", return_value="我因为一些原因需要查自己的学生档案，问小芯去哪能查"):
+            result = user_simulator.generate_user_message(
+                character=self.character,
+                intent="你想确认学生档案查询渠道。",
+                conversation_summary="",
+                forbid_patterns=[],
+            )
+
+        self.assertEqual(result, "小芯，我想查一下自己的学生档案，一般去哪里问比较靠谱？")
 
     def test_generate_user_message_handles_none_forbid_patterns(self):
         with patch("user_simulator._call_api", return_value="测试消息"):

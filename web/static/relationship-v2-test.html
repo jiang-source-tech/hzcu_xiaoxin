@@ -467,9 +467,7 @@
   <div class="toolbar">
     <div>
       <label for="sceneSelect">场景</label>
-      <select id="sceneSelect">
-        <option value="all">全部场景</option>
-      </select>
+      <select id="sceneSelect"></select>
     </div>
     <div>
       <label for="modeSelect">模式</label>
@@ -514,15 +512,17 @@
       const resp = await fetch(`${API_BASE}/api/v2/relationship-selfplay/scenes`);
       const data = await resp.json();
       const sel = document.getElementById('sceneSelect');
-      sel.innerHTML = '<option value="all">全部场景</option>';
+      sel.innerHTML = '';
       data.scenes.forEach(s => {
         const opt = document.createElement('option');
         opt.value = s.scene_id;
         opt.textContent = s.name;
         sel.appendChild(opt);
       });
+      document.getElementById('runButton').disabled = data.scenes.length === 0;
     } catch (e) {
       console.error('Failed to load scenes:', e);
+      document.getElementById('runButton').disabled = true;
     }
   }
 

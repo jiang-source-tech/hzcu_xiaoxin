@@ -15,7 +15,7 @@ import tempfile
 from pathlib import Path
 
 from dotenv import load_dotenv
-from flask import Flask, Response, jsonify, render_template, request
+from flask import Flask, Response, abort, jsonify, render_template, request
 from openai import OpenAI
 
 import boundary_guard as guard
@@ -827,23 +827,27 @@ def test_page():
 
 @app.route("/relationship-test")
 def relationship_test_page():
-    return app.send_static_file("relationship-v2-test.html")
+    abort(404)
 
 
 @app.route("/api/relationship-selfplay/personas", methods=["GET"])
 def relationship_selfplay_personas():
-    return jsonify({"personas": relationship_runner.persona_summaries()})
+    return jsonify({"error": "relationship-test 已下线；请使用 /test 进行日常对话压测。"}), 410
 
 
 @app.route("/api/relationship-selfplay/run", methods=["POST"])
 def relationship_selfplay_run():
+    return jsonify({"error": "relationship-test 已下线；请使用 /test 进行日常对话压测。"}), 410
+
     data = request.get_json(silent=True) or {}
-    persona = data.get("persona", "all")
+    persona = str(data.get("persona", "")).strip()
     live = bool(data.get("live", False))
     show_app_log = bool(data.get("show_app_log", False))
     raw_days = data.get("days")
 
-    if persona != "all" and persona not in relationship_runner.PERSONAS:
+    if not persona or persona == "all":
+        return jsonify({"error": "请选择单个 persona 运行；全场景测试已禁用。"}), 400
+    if persona not in relationship_runner.PERSONAS:
         return jsonify({"error": f"未知 persona: {persona}"}), 400
 
     max_days = None
@@ -1050,6 +1054,8 @@ def selfplay_evaluate():
 
 @app.route("/api/v2/relationship-selfplay/scenes", methods=["GET"])
 def v2_relationship_scenes():
+    return jsonify({"error": "relationship-test 已下线；请使用 /test 进行日常对话压测。"}), 410
+
     scenes = scene_runner_v2.load_all_scenes()
     summaries = [
         {
@@ -1066,8 +1072,12 @@ def v2_relationship_scenes():
 @app.route("/api/v2/relationship-selfplay/run", methods=["POST"])
 def v2_relationship_run():
     """SSE 流式返回关系闭环测试结果。"""
+    return jsonify({"error": "relationship-test 已下线；请使用 /test 进行日常对话压测。"}), 410
+
     data = request.get_json(silent=True) or {}
-    scene_id = data.get("scene", "all")
+    scene_id = str(data.get("scene", "")).strip()
+    if not scene_id or scene_id == "all":
+        return jsonify({"error": "请选择单个场景运行；全场景测试已禁用。"}), 400
     raw_seed = data.get("seed")
     seed = int(raw_seed) if raw_seed is not None else None
     skip_judge = bool(data.get("skip_judge", False))

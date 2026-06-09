@@ -14,9 +14,11 @@ import json
 import os
 import sys
 import tempfile
+import unittest
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+from unittest import mock
 
 
 if sys.platform == "win32":
@@ -26,6 +28,7 @@ os.environ.setdefault("DEEPSEEK_API_KEY", "test-key")
 
 WEB_DIR = Path(__file__).resolve().parents[1]
 RESULT_DIR = WEB_DIR / "test_results"
+DISABLED_MESSAGE = "relationship-test 已下线；请使用 /test 进行日常对话压测。"
 sys.path.insert(0, str(WEB_DIR))
 
 from relationship_self_play_runner import PERSONAS  # noqa: E402
@@ -71,9 +74,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="小芯关系闭环自对话压测")
     parser.add_argument(
         "--persona",
-        default="all",
-        choices=["all", *PERSONAS.keys()],
-        help="要运行的关系 persona，默认 all",
+        required=True,
+        choices=[*PERSONAS.keys()],
+        help="要运行的单个关系 persona",
     )
     parser.add_argument("--days", type=int, default=None, help="只运行 day <= N 的步骤")
     parser.add_argument("--live", action="store_true", help="调用真实模型，默认使用离线模拟回复")
@@ -85,6 +88,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 
 def main(argv: list[str] | None = None) -> int:
+    print(DISABLED_MESSAGE)
+    return 2
+
     args = parse_args(argv)
 
     if args.data_dir:
@@ -118,6 +124,15 @@ def main(argv: list[str] | None = None) -> int:
             print(f"\n报告已保存: {path}")
 
     return 0 if report["failed"] == 0 else 1
+
+
+class RelationshipSelfPlayCliTest(unittest.TestCase):
+    def test_cli_is_disabled_before_running_suite(self):
+        with mock.patch(__name__ + ".run_suite") as run_suite:
+            exit_code = main(["--persona", "anxious_prospective"])
+
+        self.assertEqual(exit_code, 2)
+        run_suite.assert_not_called()
 
 
 if __name__ == "__main__":

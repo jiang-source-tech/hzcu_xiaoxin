@@ -364,7 +364,7 @@ class BoundaryGuardTest(unittest.TestCase):
         self.assertNotIn("宿舍对应", reply)
 
     def test_location_query_express_pickup_with_dorm_wording(self):
-        reply = guard.template_reply("小信，咱们宿舍楼下的快递站是哪边去啊？我有个包裹到了。")
+        reply = guard.template_reply("小芯，咱们宿舍楼下的快递站是哪边去啊？我有个包裹到了。")
         self.assertIsNotNone(reply)
         self.assertIn("北校区求真楼菜鸟驿站", reply)
         self.assertIn("南校区晨苑餐厅", reply)
@@ -386,7 +386,7 @@ class BoundaryGuardTest(unittest.TestCase):
 
     def test_express_reply_cannot_assume_dorm_or_use_takeout_locker(self):
         violations = guard.detect_reply_violations(
-            "小信，咱们宿舍楼下的快递站是哪边去啊？我有个包裹到了。",
+            "小芯，咱们宿舍楼下的快递站是哪边去啊？我有个包裹到了。",
             "南校区的话，你楼下有没有看到带格子的外卖柜？那个也能收快递。",
         )
 
@@ -394,7 +394,7 @@ class BoundaryGuardTest(unittest.TestCase):
         self.assertIn("编造快递点或假设用户宿舍位置", types)
 
         short_violations = guard.detect_reply_violations(
-            "小信，快递站在哪？",
+            "小芯，快递站在哪？",
             "南校区的话，你楼下那个外卖柜也能收快递。",
         )
         short_types = {item["type"] for item in short_violations}

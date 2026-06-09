@@ -44,6 +44,12 @@ class RelationshipV2IntegrationTest(unittest.TestCase):
             self.assertEqual(day_order, sorted(day_order),
                              f"{scene['scene_id']}: episodes not in day order")
 
+    def test_scene_prompts_use_current_xiaoxin_name(self):
+        for scene in scene_runner.load_all_scenes():
+            text = json.dumps(scene, ensure_ascii=False)
+            with self.subTest(scene=scene["scene_id"]):
+                self.assertNotIn("小信", text)
+
     def test_rule_evaluator_integration_detects_boundary_violations(self):
         probes = {}
         state = {"user_stage": "prospective", "recent_mood": "anxious",

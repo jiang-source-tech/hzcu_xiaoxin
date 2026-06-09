@@ -332,26 +332,8 @@ if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(description="小芯 AI 自对话测试")
     parser.add_argument("--scenario", "-s", default="meet",
-                        choices=["meet", "struggle", "return", "boundary", "full", "all"],
+                        choices=["meet", "struggle", "return", "boundary", "full"],
                         help="测试场景 (默认: meet)")
     args = parser.parse_args()
 
-    if args.scenario == "all":
-        total = {}
-        for s in ["meet", "struggle", "boundary", "full"]:
-            print(f"\n{'#'*60}")
-            print(f"#  场景: {s}")
-            print(f"{'#'*60}")
-            _, scores = run_test(s)
-            total[s] = scores
-            time.sleep(1)
-
-        print(f"\n{'='*60}")
-        print("  [汇总] 全场景测试汇总")
-        print(f"{'='*60}")
-        for s, sc in total.items():
-            avg = sum(v for v in sc.values() if isinstance(v, (int, float))) / \
-                  max(1, sum(1 for v in sc.values() if isinstance(v, (int, float))))
-            print(f"  {SCENARIOS[s]['name']}: 均分 {avg:.1f}/10")
-    else:
-        run_test(args.scenario)
+    run_test(args.scenario)

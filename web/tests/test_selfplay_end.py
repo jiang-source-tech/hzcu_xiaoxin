@@ -250,7 +250,7 @@ class SelfplayEndTest(unittest.TestCase):
                 "/api/chat",
                 json={
                     "user_id": "test_express_template",
-                    "message": "小信，咱们宿舍楼下的快递站是哪边去啊？我有个包裹到了。",
+                    "message": "小芯，咱们宿舍楼下的快递站是哪边去啊？我有个包裹到了。",
                 },
             )
 

@@ -1,7 +1,6 @@
 """关系闭环自对话测试 v2 CLI.
 
 用法:
-    python test_relationship_v2.py                           # 跑所有场景
     python test_relationship_v2.py --scene anxious_prospective
     python test_relationship_v2.py --seed 42                  # 可复现
     python test_relationship_v2.py --max-days 3               # 只跑前 N 天
@@ -15,16 +14,19 @@ import argparse
 import json
 import os
 import sys
+import unittest
+from unittest import mock
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-os.environ.setdefault("DEEPSEEK_API_KEY", os.getenv("DEEPSEEK_API_KEY", ""))
+os.environ.setdefault("DEEPSEEK_API_KEY", "test-key")
 
 from scene_runner import load_all_scenes, run_suite  # noqa: E402
 
 RESULT_DIR = Path(__file__).resolve().parents[1] / "test_results"
+DISABLED_MESSAGE = "relationship-test 已下线；请使用 /test 进行日常对话压测。"
 
 
 def print_report(report: dict[str, Any]) -> None:
@@ -76,12 +78,12 @@ def save_report(report: dict[str, Any]) -> Path:
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     scenes = load_all_scenes()
-    scene_ids = ["all"] + [s["scene_id"] for s in scenes]
+    scene_ids = [s["scene_id"] for s in scenes]
 
     parser = argparse.ArgumentParser(description="小芯关系闭环自对话测试 v2")
     parser.add_argument(
-        "--scene", default="all", choices=scene_ids,
-        help="要运行的场景，默认 all",
+        "--scene", required=True, choices=scene_ids,
+        help="要运行的单个场景",
     )
     parser.add_argument("--seed", type=int, default=None, help="随机种子，用于复现")
     parser.add_argument("--max-days", type=int, default=None, help="只运行 day <= N 的 episode")
@@ -91,7 +93,23 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
+class RelationshipV2CliArgsTest(unittest.TestCase):
+    def test_all_scene_is_not_a_cli_choice(self):
+        with self.assertRaises(SystemExit):
+            parse_args(["--scene", "all"])
+
+    def test_cli_is_disabled_before_running_suite(self):
+        with mock.patch(__name__ + ".run_suite") as run_suite:
+            exit_code = main(["--scene", "anxious_prospective"])
+
+        self.assertEqual(exit_code, 2)
+        run_suite.assert_not_called()
+
+
 def main(argv: list[str] | None = None) -> int:
+    print(DISABLED_MESSAGE)
+    return 2
+
     args = parse_args(argv)
 
     report = run_suite(

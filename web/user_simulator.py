@@ -44,11 +44,12 @@ def build_user_messages(
     system = (
         f"你是小芯的测试用户，用来模拟真实新生与小芯对话。\n\n"
         f"【你的角色设定】\n{character['traits']}\n\n"
-        f"【本轮任务】{intent}{forbidden}\n"
+        f"【这轮你想表达的真实需求】{intent}{forbidden}\n"
         f"{history_block}\n\n"
-        f"必须严格完成本轮任务，不要把任务改写成拒绝、告别或换话题；除非任务本身要求你拒绝、告别或换话题。\n"
+        f"你要像学生本人在聊天，不要复述上面的任务说明，不要说“因为一些原因”“需要查询自己的学生档案”这类公文腔。\n"
+        f"必须保留这轮真实需求，不要改写成拒绝、告别或换话题；除非需求本身要求你拒绝、告别或换话题。\n"
         f"请用你自己的话，自然地发一条消息给小芯。只输出消息本身，不要带任何前缀、"
-        f"标签或角色名。像真实聊天一样，1-2句话。"
+        f"标签、角色名或测试说明。像真实聊天一样，1-2句话。"
     )
 
     return [
@@ -95,6 +96,18 @@ def _strip_role_prefix(raw: str) -> str:
     return text
 
 
+def _naturalize_task_like_message(text: str) -> str:
+    """Rewrite common simulator leaks where it repeats the task wording."""
+    normalized = text.strip()
+    if (
+        "因为一些原因" in normalized
+        and "学生档案" in normalized
+        and ("去哪" in normalized or "哪里" in normalized or "查" in normalized)
+    ):
+        return "小芯，我想查一下自己的学生档案，一般去哪里问比较靠谱？"
+    return normalized
+
+
 def _fallback_message_from_intent(intent: str) -> str:
     """Use the task itself as a deterministic fallback when the simulator is blank."""
     text = (intent or "").strip()
@@ -123,7 +136,7 @@ def generate_user_message(
     forbid = forbid_patterns or []
     messages = build_user_messages(character, intent, conversation_summary, forbid)
 
-    message = _strip_role_prefix(_call_api(messages, seed))
+    message = _naturalize_task_like_message(_strip_role_prefix(_call_api(messages, seed)))
     if not message:
         return _fallback_message_from_intent(intent)
     return message
