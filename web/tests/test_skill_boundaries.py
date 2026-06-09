@@ -35,14 +35,28 @@ class SkillBoundariesTest(unittest.TestCase):
         self.assertNotIn("| 鼓励 | 「没事，学长当年也这样。」 |", self.skill)
         self.assertNotIn("「代码跑不通？正常，学长当年debug了两天两夜", self.skill)
 
-    def test_canteen_answers_require_complete_known_list_and_location_boundary(self):
-        for canteen in ("北秀食堂", "晨苑餐厅", "学苑餐厅", "二食堂", "石榴红餐厅"):
-            with self.subTest(canteen=canteen):
-                self.assertIn(canteen, self.skill)
-        self.assertNotIn("休闲餐厅", self.skill)
+    def test_structured_knowledge_stays_out_of_skill_prompt(self):
+        self.assertIn("结构化知识库", self.skill)
+        self.assertIn("campus_life.json", self.skill)
+        self.assertIn("campus_directory.json", self.skill)
+        self.assertIn("student_affairs_qa.json", self.skill)
 
+        detailed_facts = [
+            "北秀食堂（北校区）：智慧食堂",
+            "晨苑餐厅（南校区）：网红食堂",
+            "民间说法\"南晨北秀\"",
+            "有热水器（夜间约23:30左右停热水）",
+            "最近地铁站：3号线/5号线善贤站",
+        ]
+        for fact in detailed_facts:
+            with self.subTest(fact=fact):
+                self.assertNotIn(fact, self.skill)
+
+        self.assertNotIn("必须先完整列出知识库中的餐饮点", self.skill)
+
+    def test_canteen_answers_keep_boundaries_without_embedding_fact_list(self):
         self.assertIn("食堂回答规则", self.skill)
-        self.assertIn("必须先完整列出知识库中的餐饮点", self.skill)
+        self.assertIn("具体食堂名称、校区、公开描述和已知餐饮点以结构化知识库为准", self.skill)
         self.assertIn("不能编造", self.skill)
         self.assertIn("具体楼号、楼层、门牌号和实时营业时间", self.skill)
         self.assertIn("食堂推荐边界", self.skill)
