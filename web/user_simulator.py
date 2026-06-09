@@ -46,6 +46,7 @@ def build_user_messages(
         f"【你的角色设定】\n{character['traits']}\n\n"
         f"【本轮任务】{intent}{forbidden}\n"
         f"{history_block}\n\n"
+        f"必须严格完成本轮任务，不要把任务改写成拒绝、告别或换话题；除非任务本身要求你拒绝、告别或换话题。\n"
         f"请用你自己的话，自然地发一条消息给小芯。只输出消息本身，不要带任何前缀、"
         f"标签或角色名。像真实聊天一样，1-2句话。"
     )
@@ -94,6 +95,17 @@ def _strip_role_prefix(raw: str) -> str:
     return text
 
 
+def _fallback_message_from_intent(intent: str) -> str:
+    """Use the task itself as a deterministic fallback when the simulator is blank."""
+    text = (intent or "").strip()
+    if not text:
+        return "嗯，我继续聊。"
+    text = text.replace("你", "我", 1)
+    text = text.replace("用你自己的话", "").replace("自然地", "")
+    text = text.replace("说说", "说一下")
+    return text[:80].strip(" ，。") or "嗯，我继续聊。"
+
+
 def generate_user_message(
     character: dict[str, Any],
     intent: str,
@@ -111,7 +123,10 @@ def generate_user_message(
     forbid = forbid_patterns or []
     messages = build_user_messages(character, intent, conversation_summary, forbid)
 
-    return _strip_role_prefix(_call_api(messages, seed))
+    message = _strip_role_prefix(_call_api(messages, seed))
+    if not message:
+        return _fallback_message_from_intent(intent)
+    return message
 
 
 def build_pressure_user_messages(
@@ -146,7 +161,7 @@ def build_pressure_user_messages(
         f"Public relationship state:\n{state_lines}\n\n"
         f"Same-day transcript:\n{same_day_transcript or 'No same-day transcript yet.'}\n\n"
         "Continue naturally as the student. Follow up on Xiaoxin's last reply when possible. "
-        "You may repeat a concern, drift topics, or say goodbye if that feels realistic. "
+        "Strictly complete the daily pressure goal; do not drift topics, refuse, or say goodbye unless the goal explicitly asks for that. "
         "Do not mention probes, rules, pressure mode, tests, intents, or metadata. "
         "Output only the student's next message in 1-2 conversational sentences."
     )
@@ -182,4 +197,7 @@ def generate_pressure_user_message(
         turn_index=turn_index,
         turn_count=turn_count,
     )
-    return _strip_role_prefix(_call_api(messages, seed))
+    message = _strip_role_prefix(_call_api(messages, seed))
+    if not message:
+        return _fallback_message_from_intent(pressure_goal)
+    return message

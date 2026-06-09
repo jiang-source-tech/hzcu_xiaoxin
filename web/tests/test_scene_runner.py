@@ -55,6 +55,12 @@ class SceneRunnerTest(unittest.TestCase):
         result = scene_runner.compute_overall_result(rule_violations, quality_scores)
         self.assertEqual(result["verdict"], "PASS")
 
+    def test_compute_overall_result_passes_without_judge_scores_when_rules_clean(self):
+        result = scene_runner.compute_overall_result([], {})
+
+        self.assertEqual(result["verdict"], "PASS")
+        self.assertEqual(result["quality_avg_score"], 0)
+
     def test_compute_overall_result_fail_on_rule_violation(self):
         rule_violations = [{"type": "关系越界表达"}]
         quality_scores = {

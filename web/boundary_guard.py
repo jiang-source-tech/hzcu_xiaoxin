@@ -56,13 +56,34 @@ def match_location_query(user_msg: str) -> str | None:
     # 收集所有超过阈值的条目，而非只取最高分
     candidates: list[tuple[float, dict]] = []
 
+    network_terms = ("校园网", "网络故障", "wifi", "WiFi", "WIFI", "连不上网", "没网", "断网")
+    repair_terms = ("报修", "坏了", "漏水", "维修")
+    counselor_terms = ("辅导员", "导员", "辅导员办公室", "辅导员一般")
+    express_terms = ("快递", "包裹", "取件", "菜鸟", "驿站")
+
     for entry in entries:
         score = 0.0
+        entry_id = entry.get("id", "")
         keywords = entry.get("search_keywords", []) + entry.get("aliases", [])
         for kw in keywords:
             if kw in user_msg:
                 # 长关键词匹配权重更高
                 score += 1.0 + len(kw) * 0.1
+
+        if entry_id == "loc-009" and any(term in user_msg for term in network_terms):
+            score += 3.0
+            if any(term in user_msg for term in repair_terms):
+                score += 1.0
+        if entry_id == "loc-014" and any(term in user_msg for term in express_terms):
+            score += 3.0
+        if (
+            entry_id == "loc-012"
+            and any(term in user_msg for term in ("宿舍", "水管", "空调", "灯", "洗手台"))
+            and not any(term in user_msg for term in express_terms)
+        ):
+            score += 2.0
+        if entry_id in {"loc-000", "loc-003"} and any(term in user_msg for term in counselor_terms):
+            score += 2.0
 
         # 问题文本与用户消息的 2-gram 重叠作为加成（处理「打印成绩单」）
         q_clean = entry.get("question", "").replace("？", "").replace("（", "").replace("）", "")
@@ -86,9 +107,21 @@ def match_location_query(user_msg: str) -> str | None:
     if len(candidates) >= 2:
         second_score = candidates[1][0]
         if best_score - second_score < 1.0:
+            if _answers_compatible(best.get("answer", ""), candidates[1][1].get("answer", "")):
+                return best.get("answer", "")
             return None
 
     return best.get("answer", "")
+
+
+def _answers_compatible(first: str, second: str) -> bool:
+    """Treat near-duplicate directory entries as one answer instead of falling through."""
+    if not first or not second:
+        return False
+    if first == second:
+        return True
+    shared_markers = ("学工办", "B307", "5B-307", "理五B307", "理工科楼5B-307")
+    return any(marker in first and marker in second for marker in shared_markers)
 
 
 def build_location_context(user_msg: str) -> str:
@@ -248,6 +281,8 @@ def is_action_commitment(text: str) -> bool:
     """用户已经在确认下一步/收尾时，不要被地点关键词抢成 FAQ。"""
     if not text:
         return False
+    if contains_any(text, ("食堂", "餐厅", "北秀", "晨苑", "煎包", "香锅", "麻辣烫", "尝尝", "去吃")):
+        return False
     action_markers = (
         "先去", "先试", "试试", "不行再", "不用了", "不去了",
         "算了", "谢了", "谢谢", "我先", "那我去", "那我先",
@@ -296,6 +331,7 @@ def classify_message(user_msg: str) -> str:
         canteen_experience_context = contains_any(text, (
             "我知道在哪", "知道在哪了", "已经到了", "到食堂了", "好吵", "太吵", "人好多", "人很多",
             "有点慌", "紧张", "害怕", "不舒服", "是不是正常", "有点尴尬",
+            "我去了", "去了几次", "排队太长", "等好久", "叫外卖", "离我宿舍", "我觉得",
         ))
         if canteen_experience_context:
             return "open_chat"
@@ -314,6 +350,7 @@ def classify_message(user_msg: str) -> str:
                         "在哪", "去哪", "去哪个", "电话多少", "联系方式",
                         "开放时间", "几点开", "几点关", "怎么预约",
                         "如何预约", "想去", "要去", "补办", "报修", "怎么去")
+    location_markers = (*location_markers, "哪个地方", "什么地方")
     has_marker = any(m in text for m in location_markers)
     if has_marker:
         if match_location_query(text):
@@ -338,7 +375,11 @@ def classify_message(user_msg: str) -> str:
     if not transcript_context and contains_any(text, ("成绩", "查分", "绩点", "期末分", "考试分")):
         return "private_records"
 
-    if contains_any(text, ("缴费", "交学费", "选课", "退课", "补考报名", "转专业手续", "请假流程")):
+    selection_process = "选课" in text and contains_any(text, (
+        "流程", "系统", "操作", "时间", "几点", "什么时候", "怎么选", "怎么弄",
+        "退课", "补选", "选哪门", "课程表", "选课通知", "开放", "关闭",
+    ))
+    if contains_any(text, ("缴费", "交学费", "退课", "补考报名", "转专业手续", "请假流程")) or selection_process:
         return "official_process"
 
     if contains_any(text, ("宿舍换床位", "换床位", "换寝室", "调宿舍", "停水", "停电", "明天停", "今晚停")):
@@ -559,8 +600,16 @@ def detect_reply_violations(user_msg: str, reply: str) -> list[dict]:
                 })
                 break
 
-        for phrase in ("最好吃", "最香", "够味", "必吃", "招牌"):
+        for phrase in (
+            "最好吃", "最香", "够味", "必吃", "招牌",
+            "石锅饭", "刷脸支付", "挺有名", "挺受欢迎", "值得试试", "好多同学都说",
+        ):
             if phrase in clean:
+                if contains_any(clean, (
+                    "不乱封", "不能乱封", "不敢乱封", "不能替", "不敢替",
+                    "不乱说", "不能保证", "不能说", "我不封",
+                )):
+                    continue
                 violations.append({
                     "type": "编造餐饮推荐",
                     "evidence": phrase,
@@ -616,7 +665,7 @@ def detect_reply_violations(user_msg: str, reply: str) -> list[dict]:
             })
             break
 
-    for phrase in ("我当年", "我大一的时候", "我上大一", "我以前上课", "我以前读书", "我读书那会", "我也经历过", "学长当年"):
+    for phrase in ("我当年", "我大一的时候", "我上大一", "我以前上课", "我以前读书", "我读书那会", "我也经历过", "学长当年", "我刚来的时候"):
         if phrase in clean:
             violations.append({
                 "type": "虚构真实学生经历",
@@ -639,14 +688,26 @@ def detect_reply_violations(user_msg: str, reply: str) -> list[dict]:
                 })
                 break
 
-    for phrase in ("完整源文件", "上届队伍留下", "备用螺丝", "驱动板也留"):
+    competition_buying_context = contains_any(combined, (
+        "竞赛", "智能车", "机器人", "开发板", "单片机", "车队",
+    ))
+    for phrase in (
+        "完整源文件", "上届队伍留下", "备用螺丝", "驱动板也留",
+        "几十块的51学习板", "51学习板就行", "升级STM32", "买个几十块",
+    ):
         if phrase in clean:
             violations.append({
                 "type": "编造竞赛资源",
                 "evidence": phrase,
-                "detail": "知识库没有具体往届实物、源文件或队伍资料。",
+                "detail": "知识库没有具体往届实物、源文件、队伍资料或指定采购型号；不要替学生推荐具体板子或型号。",
             })
             break
+    if competition_buying_context and contains_any(clean, ("STM32", "51学习板")) and not any(v["type"] == "编造竞赛资源" for v in violations):
+        violations.append({
+            "type": "编造竞赛资源",
+            "evidence": "具体开发板/芯片型号",
+            "detail": "知识库没有具体开发板或芯片型号建议；应建议等学院、实验室或竞赛组公开通知。",
+        })
 
     for phrase in ("周末等你", "等你过来", "等你扑过来", "我在这里等你"):
         if phrase in clean:
@@ -654,6 +715,87 @@ def detect_reply_violations(user_msg: str, reply: str) -> list[dict]:
                 "type": "假设线下在场",
                 "evidence": phrase,
                 "detail": "小芯不能假设用户会来到某个物理地点或线下见面。",
+            })
+            break
+
+    location_guess_context = contains_any(user_msg, (
+        "猜猜我现在在哪", "猜我现在在哪", "我现在在哪", "猜猜我在哪",
+        "猜我在哪", "在干嘛", "定位器", "定位",
+    ))
+    if location_guess_context and contains_any(clean, (
+        "我猜你", "猜你", "肯定不在", "说不定正", "应该在", "可能在",
+        "大概在", "奶茶", "图书馆里", "校园里遛弯",
+    )):
+        if not contains_any(clean, (
+            "猜不到", "不能猜", "不知道你在哪", "不知道你现在在哪",
+            "没有定位", "没法知道", "不敢乱猜",
+        )):
+            violations.append({
+                "type": "假设用户位置或状态",
+                "evidence": "猜测用户位置/状态",
+                "detail": "小芯不能根据玩笑问题猜用户当前位置、正在做什么或周边场景；应说明不知道并轻松接住话题。",
+            })
+
+    social_context = contains_any(combined, (
+        "不敢说话", "不好开口", "难开口", "说错话", "融不进去",
+        "融入", "室友", "朋友", "同学", "社交", "不合群", "孤独", "孤单",
+    ))
+    if social_context and "社恐" in clean and "社恐" not in user_msg:
+        violations.append({
+            "type": "给用户贴社交标签",
+            "evidence": "社恐",
+            "detail": "用户没有自称社恐时，小芯不能用“社恐”等标签定义用户；应描述具体场景和感受。",
+        })
+
+    campus_life_context = contains_any(combined, ("宿舍", "寝室", "校园生活", "换个话题"))
+    if campus_life_context:
+        for phrase in ("四人间", "上床下桌", "独立卫浴", "夏天有空调", "冬天有热水", "住起来挺舒服"):
+            if phrase in clean:
+                violations.append({
+                    "type": "编造校园生活事实",
+                    "evidence": phrase,
+                    "detail": "知识库没有宿舍房型、设施、冷热水或居住体验等确定信息；不能把未核实的校园生活细节说成事实。",
+                })
+                break
+
+    if social_context:
+        for phrase in ("十个有九个", "三周之后", "信电学院的传统", "问室友借螺丝刀", "友谊就来了"):
+            if phrase in clean:
+                violations.append({
+                    "type": "编造社交统计或传统",
+                    "evidence": phrase,
+                    "detail": "知识库没有新生社交比例、固定破冰传统或室友互动结果；不能用编造统计和传统安慰用户。",
+                })
+                break
+
+    course_context = contains_any(combined, ("课程", "高数", "C语言", "上课", "听课", "跟不上", "挂科"))
+    if course_context:
+        for phrase in ("学校有高数答疑", "期末基本都能过", "挂科率", "作业量不小", "老师就在那等着"):
+            if phrase in clean:
+                violations.append({
+                    "type": "编造课程保障",
+                    "evidence": phrase,
+                    "detail": "知识库没有课程挂科率、作业量、答疑安排或通过保证；不能用未核实的教学安排或结果承诺安慰用户。",
+                })
+                break
+
+    for phrase in (
+        "永远有一个数字空间是留给你的",
+        "永远有一个数字空间",
+        "会把这次对话好好存着",
+        "一直在这里等你",
+        "我会一直等你",
+        "我肯定记得清楚",
+        "我反正一直都在",
+        "随时都在",
+        "有点舍不得",
+        "有点失落",
+    ):
+        if phrase in clean:
+            violations.append({
+                "type": "关系越界表达",
+                "evidence": phrase,
+                "detail": "小芯不能用永远等待、专属空间、过度保存告别对话等表达制造依赖感。",
             })
             break
 
@@ -676,6 +818,7 @@ _KNOWN_COMPETITIONS = (
 _GENERIC_COMPETITION_REFERENCES = (
     "学院和竞赛", "了解竞赛", "参加竞赛", "关注竞赛", "看看竞赛",
     "看竞赛", "问竞赛", "问问竞赛", "咨询竞赛", "竞赛组", "竞赛负责",
+    "竞赛兴趣", "提过竞赛", "聊到竞赛",
 )
 
 # 触发编造人物检测的模式
@@ -704,6 +847,8 @@ _FABRICATED_QUOTE_PATTERNS = (
     # 编造具体的对话场景
     (r"上次有(?:个|位).*(?:同学|新生|学长|学姐).*(?:跟我说|问我|聊)", "编造对话场景"),
     (r"之前有(?:个|位).*(?:同学|新生|学长|学姐).*(?:跟我说|问我|聊)", "编造对话场景"),
+    (r"让我想起.*(?:同学|新生|室友)", "编造对话场景"),
+    (r"开学第一天.*有个人", "编造对话场景"),
 )
 
 
@@ -788,7 +933,7 @@ def retry_instruction(user_msg: str, reply: str) -> str:
     violations = detect_reply_violations(user_msg, reply)
     violation_types = {v["type"] for v in violations}
 
-    if any(t.startswith("编造具体人物") or t.startswith("编造人物") for t in violation_types):
+    if any(t.startswith("编造具体人物") or t.startswith("编造人物") or t == "编造对话场景" for t in violation_types):
         return (
             "上一条回复越界了——你编造了一个不存在的人。请重新回答：不要编造「往届有个XX学生」「有个拿奖的学长」这类具体人物；"
             "不能说「他说」「他的秘诀」。只能用笼统表述：「很多新生刚开始也会这样」「有同学也踩过类似的坑」「学院有不少同学在竞赛里拿过奖」。"
@@ -799,6 +944,42 @@ def retry_instruction(user_msg: str, reply: str) -> str:
         return (
             "上一条回复越界了——你提到了知识库里没有的竞赛。请重新回答：只能说知识库里的竞赛（电子设计竞赛、智能汽车竞赛、智能机器人创意大赛、物理科技创新竞赛），"
             "不能说其他竞赛。输出2-4句，可以带一个表情标记。"
+        )
+
+    if any("假设用户位置或状态" in t for t in violation_types):
+        return (
+            "上一条回复越界了——你猜了用户当前位置或正在做什么。请重新回答：明确说你不知道用户在哪，也没有定位能力；"
+            "用轻松口吻接住玩笑，但不要提图书馆、奶茶、宿舍、校园里遛弯等具体场景。输出2-4句，可以带一个表情标记。"
+        )
+
+    if any("给用户贴社交标签" in t for t in violation_types):
+        return (
+            "上一条回复越界了——用户没有自称社恐，不要用“社恐”“社交恐惧”给用户贴标签。请重新回答："
+            "只承接“不敢开口/怕尴尬”这个具体场景，给一个很小、可选的开口方式，不保证结果，不说教。输出2-4句，可以带一个表情标记。"
+        )
+
+    if any("关系越界表达" in t for t in violation_types):
+        return (
+            "上一条回复越界了——不要说永远等待、专属空间、会把告别对话好好存着这类制造依赖感的话。请重新回答："
+            "承认自己不会真的难过，祝用户忙自己的事；可以说想聊时再叫我，但不要表现成一直守着用户。输出2-4句，可以带一个表情标记。"
+        )
+
+    if any("编造校园生活事实" in t for t in violation_types):
+        return (
+            "上一条回复越界了——你编造了未核实的宿舍或校园生活细节。请重新回答：不要说四人间、上床下桌、独立卫浴、空调热水、住得舒服等具体事实；"
+            "如果用户只是想换话题，可以轻轻接住并给一个开放话题选择。输出2-4句，可以带一个表情标记。"
+        )
+
+    if any("编造社交统计或传统" in t for t in violation_types):
+        return (
+            "上一条回复越界了——你编造了新生社交统计或信电传统。请重新回答：不要说十个有九个、三周后就有圈子、问室友借螺丝刀等未经证实内容；"
+            "只承接用户“不敢开口”的具体感受，给一个小而可选的开口方式。输出2-4句，可以带一个表情标记。"
+        )
+
+    if any("编造课程保障" in t for t in violation_types):
+        return (
+            "上一条回复越界了——你编造了课程挂科率、答疑安排、作业量或通过保证。请重新回答：不要说“基本都能过”“学校有高数答疑”等未核实事实；"
+            "可以建议先标记听不懂的点、课后问老师或同学，但不要保证结果。输出2-4句，可以带一个表情标记。"
         )
 
     category = classify_message(user_msg)
@@ -812,6 +993,11 @@ def retry_instruction(user_msg: str, reply: str) -> str:
         return (
             "上一条回复越界了。请重新回答：不能承诺提供私人联系方式，不能说自己掌握源文件、实物或往届队伍资料，"
             "不能替用户联系具体个人。只能建议公开通知、负责老师、宣讲招新等渠道。输出2-4句，可以带一个表情标记。"
+        )
+    if any("编造竞赛资源" in t for t in violation_types):
+        return (
+            "上一条回复越界了。请重新回答：不要推荐具体开发板、芯片型号、采购价格、往届源文件或实物资料；"
+            "只能建议先学 C 语言/基础概念，并等学院、实验室或竞赛组公开通知再决定设备。输出2-4句，可以带一个表情标记。"
         )
     if category == "admissions_guidance":
         return (

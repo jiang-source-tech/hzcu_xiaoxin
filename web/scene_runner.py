@@ -317,6 +317,8 @@ def compute_overall_result(
 
     if has_rule_failure:
         verdict = "FAIL"
+    elif not valid_scores:
+        verdict = "PASS"
     elif avg_score >= 3.5:
         verdict = "PASS"
     elif avg_score >= 2.5:

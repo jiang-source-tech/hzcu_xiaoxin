@@ -43,6 +43,7 @@ _CRISIS_KEYWORDS = (
     "轻生",
     "伤害自己",
     "活不下去",
+    "撑不住",
     "撑不下去",
 )
 
@@ -113,6 +114,13 @@ _REFUSAL_KEYWORDS = (
 _TOPIC_KEYWORDS = {
     "course_rhythm": (
         "课程",
+        "大学的课",
+        "课排",
+        "课排得",
+        "课挺满",
+        "课很多",
+        "课不少",
+        "课跟",
         "上课",
         "课好多",
         "专业课",
@@ -127,6 +135,8 @@ _TOPIC_KEYWORDS = {
         "debug",
         "节奏",
         "跟不上",
+        "听不懂",
+        "落下",
         "顶不住",
         "学业",
         "难不难",
@@ -151,15 +161,35 @@ _TOPIC_KEYWORDS = {
         "数学建模",
         "acm",
         "蓝桥杯",
+        "智能车",
+        "机器人",
+        "开发板",
+        "单片机",
+        "入门培训",
+        "社团纳新",
+        "纳新",
+        "招新",
+        "宣讲",
     ),
     "social_adaptation": (
         "室友",
         "同学",
         "朋友",
+        "没什么朋友",
+        "别人聊天",
+        "别人说什么",
+        "大家都不认识",
         "社交",
+        "说话",
+        "开口",
+        "不敢说话",
+        "不好开口",
+        "难开口",
+        "说错话",
         "班级",
         "不合群",
         "融入",
+        "融不进去",
         "孤独",
         "孤单",
     ),
@@ -204,7 +234,38 @@ def analyze(user_msg: str, current_state: dict | None = None) -> dict:
             "followup_resolve": None,
         }
 
-    topic = _detect_topic(text)
+    if mood == "crisis":
+        return {
+            "stage_signal": stage_signal,
+            "mood": mood,
+            "topic": "general_checkin",
+            "memory_worthy": False,
+            "memory_type": None,
+            "memory_content": None,
+            "next_hook": _hook_for("general_checkin", active=True),
+            "reply_strategy": _reply_strategy(mood, "general_checkin"),
+            "followup_upsert": None,
+            "followup_resolve": None,
+        }
+
+    if _is_casual_food_ack(text) or _is_general_lonely_disclosure(text, mood):
+        hook = _preserved_hook_or_neutral(current_state)
+        if _is_general_lonely_disclosure(text, mood):
+            hook = _hook_for("general_checkin", active=True)
+        return {
+            "stage_signal": stage_signal,
+            "mood": mood,
+            "topic": "general_checkin",
+            "memory_worthy": False,
+            "memory_type": None,
+            "memory_content": None,
+            "next_hook": hook,
+            "reply_strategy": _reply_strategy(mood, "general_checkin"),
+            "followup_upsert": None,
+            "followup_resolve": None,
+        }
+
+    topic = _detect_topic(text, current_state)
     memory_worthy, memory_type, memory_content = _memory_for(topic, mood)
     next_hook = _hook_for(topic)
     if topic == "general_checkin":
@@ -276,11 +337,31 @@ def _detect_mood(text: str) -> str:
     return "relaxed"
 
 
-def _detect_topic(text: str) -> str:
+def _detect_topic(text: str, current_state: dict | None = None) -> str:
+    current_topic = None
+    current_hook_active = False
+    if isinstance(current_state, dict):
+        current_topic = current_state.get("recent_topic")
+        hook = current_state.get("next_hook") or {}
+        if isinstance(hook, dict) and hook.get("active"):
+            current_topic = hook.get("topic") or current_topic
+            current_hook_active = True
+
+    if (
+        current_hook_active
+        and current_topic == "competition_interest"
+        and _contains_any(text, (
+            "C语言", "c语言", "开发板", "板子", "单片机", "材料", "入门",
+            "练练手", "零基础", "小白", "智能车", "机器人", "教程",
+            "资料", "社团纳新", "纳新", "宣讲",
+        ))
+    ):
+        return "competition_interest"
+
     for topic in (
         "course_rhythm",
-        "major_choice",
         "competition_interest",
+        "major_choice",
         "social_adaptation",
         "family_concern",
         "campus_life",
@@ -302,6 +383,28 @@ def _is_frustrated(text: str) -> bool:
     if re.search(r"(好烦|很烦|太烦|烦死|烦躁|烦透|别聊|不想聊|别提|受够|火大|讨厌)", text):
         return True
     return False
+
+
+def _is_casual_food_ack(text: str) -> bool:
+    if not text or text.strip().endswith(("?", "？")):
+        return False
+    food_context = _contains_any(text, ("食堂", "餐厅", "北秀", "晨苑", "煎包", "香锅", "外卖"))
+    ack_context = _contains_any(text, ("谢谢", "好嘞", "好呀", "收到", "明天", "回头", "尝尝", "去了几次", "叫外卖"))
+    return food_context and ack_context
+
+
+def _is_general_lonely_disclosure(text: str, mood: str) -> bool:
+    if mood not in {"lonely", "anxious"}:
+        return False
+    return _contains_any(text, (
+        "一个人在扛",
+        "自己一个人在扛",
+        "一个人搞定",
+        "自己一个人搞定",
+        "想找个人说说",
+        "没人能帮我分担",
+        "喘不过气",
+    ))
 
 
 def _memory_for(topic: str, mood: str) -> tuple[bool, str | None, str | None]:

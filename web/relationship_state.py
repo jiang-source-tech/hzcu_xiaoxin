@@ -201,11 +201,29 @@ def _archive_stale_followups(state: dict[str, Any]):
     state["followups"] = followups
 
 
+def _archive_followups_for_topic(state: dict[str, Any], topic: str | None, now: datetime):
+    if not topic or topic == "general_checkin":
+        return
+    followups = state.get("followups", [])
+    changed = False
+    for fw in followups:
+        if fw.get("status") == "active" and fw.get("topic") == topic:
+            fw["status"] = "resolved"
+            fw["resolved_at"] = now.isoformat()
+            changed = True
+    if changed:
+        state["followups"] = followups
+
+
 def followups_prompt(state: dict[str, Any]) -> str:
     """将活跃 followups 转换为关心的 prompt 片段。"""
     _archive_stale_followups(state)
     followups = state.get("followups", [])
-    active = [f for f in followups if f.get("status") == "active"]
+    active = [f for f in followups if f.get("status") == "active" and not f.get("last_greeted_at")]
+    has_greeted_active_followups = any(
+        f.get("status") == "active" and f.get("last_greeted_at")
+        for f in followups
+    )
     if not active:
         return ""
 
@@ -252,7 +270,11 @@ def _sync_next_hook_from_followups(state: dict[str, Any]):
         return
 
     followups = state.get("followups", [])
-    active = [f for f in followups if f.get("status") == "active"]
+    active = [f for f in followups if f.get("status") == "active" and not f.get("last_greeted_at")]
+    has_greeted_active_followups = any(
+        f.get("status") == "active" and f.get("last_greeted_at")
+        for f in followups
+    )
     if not active:
         # 如果没有活跃 followup，保持之前的 hook 或设为 neutral
         if not existing:
@@ -306,6 +328,8 @@ def update_after_turn(
         elif "last_mentioned" not in merged_hook and updated.get("next_hook"):
             merged_hook["last_mentioned"] = updated["next_hook"].get("last_mentioned")
         updated["next_hook"] = merged_hook
+        if merged_hook.get("active") is False:
+            _archive_followups_for_topic(updated, merged_hook.get("topic"), now)
 
     # ── Followups: upsert ──
     followup_upsert = analysis.get("followup_upsert")
@@ -382,7 +406,11 @@ def greeting_payload(data_dir: Path, user_id: str, today: str | None = None) -> 
 
     # 优先用 followups 中的高 intensity 项生成问候
     followups = state.get("followups", [])
-    active = [f for f in followups if f.get("status") == "active"]
+    active = [f for f in followups if f.get("status") == "active" and not f.get("last_greeted_at")]
+    has_greeted_active_followups = any(
+        f.get("status") == "active" and f.get("last_greeted_at")
+        for f in followups
+    )
     intensity_order = {"high": 3, "medium": 2, "low": 1}
     active.sort(key=lambda f: intensity_order.get(f.get("intensity", "low"), 0), reverse=True)
 
@@ -404,6 +432,8 @@ def greeting_payload(data_dir: Path, user_id: str, today: str | None = None) -> 
         else:
             greeting = f"上次聊到{label}，今天想接着聊吗？还是换个话题？"
 
+        top["last_greeted_at"] = today
+        state["followups"] = followups
         save_state(data_dir, user_id, state)
         return {
             "greeting": greeting,
@@ -412,6 +442,10 @@ def greeting_payload(data_dir: Path, user_id: str, today: str | None = None) -> 
             "kind": "contextual",
             "companion_action": {"kind": "idle_wave", "intensity": 0.3},
         }
+
+    if has_greeted_active_followups:
+        save_state(data_dir, user_id, state)
+        return _generic_payload()
 
     # fallback: 用旧的 hook 逻辑
     hook = state.get("next_hook") or {}

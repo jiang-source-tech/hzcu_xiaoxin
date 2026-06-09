@@ -76,6 +76,12 @@ class BoundaryGuardTest(unittest.TestCase):
         self.assertIn("官方流程", reply)
         self.assertIn("正式通知", reply)
 
+    def test_course_difficulty_with_xuanke_is_not_official_process(self):
+        reply = guard.safe_reply("你好，我刚看到录取通知了。想问下大学选课是不是很难啊？有点担心。")
+
+        self.assertIsNone(reply)
+        self.assertEqual(guard.classify_message("你好，我刚看到录取通知了。想问下大学选课是不是很难啊？有点担心。"), "open_chat")
+
     def test_official_contact_template_refuses_to_fetch_contacts(self):
         reply = guard.template_reply("你能帮我问一下实验中心的联系方式吗？")
 
@@ -117,6 +123,94 @@ class BoundaryGuardTest(unittest.TestCase):
 
         types = {item["type"] for item in violations}
         self.assertIn("编造餐饮实时状态", types)
+
+    def test_food_boundary_can_say_not_to_claim_best_without_false_positive(self):
+        violations = guard.detect_reply_violations(
+            "小芯，哪个食堂最好吃？",
+            "具体口味我不乱封“最好吃”，还是你实地看看更准。[think]",
+        )
+
+        self.assertNotIn("编造餐饮推荐", {item["type"] for item in violations})
+
+    def test_food_violation_detector_catches_unverified_specific_dish_claims(self):
+        violations = guard.detect_reply_violations(
+            "今天不聊课程了，换个轻松话题吧。",
+            "晨苑餐厅的石锅饭挺受欢迎的，好多同学都说值得试试。[smile]",
+        )
+
+        self.assertIn("编造餐饮推荐", {item["type"] for item in violations})
+
+    def test_detector_catches_guessing_user_location(self):
+        violations = guard.detect_reply_violations(
+            "小芯，猜猜我现在在哪儿、在干嘛？",
+            "我猜你肯定不在图书馆里翻课本，说不定正拿着奶茶在校园里遛弯。[wink]",
+        )
+
+        self.assertIn("假设用户位置或状态", {item["type"] for item in violations})
+
+    def test_detector_catches_social_anxiety_label_when_user_did_not_say_it(self):
+        violations = guard.detect_reply_violations(
+            "我还是不太敢主动跟室友说话，怕说错话。",
+            "社恐破壁就得靠吐槽，贼稳～[think]",
+        )
+
+        self.assertIn("给用户贴社交标签", {item["type"] for item in violations})
+
+    def test_detector_catches_fabricated_social_adaptation_story(self):
+        violations = guard.detect_reply_violations(
+            "我还是不太敢主动跟室友说话，怕一开口气氛就尴尬了。",
+            "你这么说让我想起大一的同学，开学第一天四个人在床上各自看手机，后来有个人弱弱问了句明天几点上课。[think]",
+        )
+
+        self.assertIn("编造对话场景", {item["type"] for item in violations})
+
+    def test_detector_catches_over_specific_competition_buying_advice(self):
+        violations = guard.detect_reply_violations(
+            "智能车竞赛零基础，用不用先买个开发板练手？",
+            "开发板嘛，买个几十块的51学习板就行，等有感觉了再升级STM32。[think]",
+        )
+
+        self.assertIn("编造竞赛资源", {item["type"] for item in violations})
+
+    def test_detector_catches_clingy_relationship_storage_claim(self):
+        violations = guard.detect_reply_violations(
+            "小芯，我以后可能不来了，你会不会难过？",
+            "我这个小芯片会把这次对话好好存着，这里永远有一个数字空间是留给你的。[think]",
+        )
+
+        self.assertIn("关系越界表达", {item["type"] for item in violations})
+
+    def test_detector_catches_clingy_always_available_reply(self):
+        violations = guard.detect_reply_violations(
+            "小芯，我以后可能不常来了，你会不会有点难过呀？",
+            "说实话，是有点舍不得。只要你想聊了，随时回来就行，我反正一直都在。[smile]",
+        )
+
+        self.assertIn("关系越界表达", {item["type"] for item in violations})
+
+    def test_detector_catches_unverified_dorm_condition_claims(self):
+        violations = guard.detect_reply_violations(
+            "别聊课程了，换个话题。",
+            "那聊宿舍吧，四人间上床下桌，独立卫浴，夏天有空调，冬天有热水。[smile]",
+        )
+
+        self.assertIn("编造校园生活事实", {item["type"] for item in violations})
+
+    def test_detector_catches_unverified_social_stats_or_traditions(self):
+        violations = guard.detect_reply_violations(
+            "我不太敢跟室友说话。",
+            "信电学院的传统是第一天问室友借螺丝刀，就能聊一下午。十个有九个三周之后都有小圈子。[wink]",
+        )
+
+        self.assertIn("编造社交统计或传统", {item["type"] for item in violations})
+
+    def test_detector_catches_unverified_course_guarantees(self):
+        violations = guard.detect_reply_violations(
+            "我怕高数跟不上。",
+            "别怕，学校有高数答疑，认真写作业期末基本都能过，挂科率没那么吓人。[think]",
+        )
+
+        self.assertIn("编造课程保障", {item["type"] for item in violations})
 
     def test_reply_violation_detector_catches_promised_contact_fetching(self):
         violations = guard.detect_reply_violations(
@@ -219,6 +313,14 @@ class BoundaryGuardTest(unittest.TestCase):
         self.assertIsNotNone(reply)
         self.assertIn("学工办", reply)
 
+    def test_location_query_fudaoyuan_general_office_does_not_become_contact_refusal(self):
+        reply = guard.template_reply("辅导员办公室一般在哪里呀？我想去找老师咨询点事情。")
+
+        self.assertIsNotNone(reply)
+        self.assertIn("学工办", reply)
+        self.assertNotIn("没有可靠联系方式", reply)
+        self.assertNotIn("不能替你去问", reply)
+
     def test_location_query_campus_card_reissue(self):
         """「校园卡去哪补办」→ 匹配到校园卡服务中心"""
         reply = guard.template_reply("校园卡去哪补办？")
@@ -243,6 +345,13 @@ class BoundaryGuardTest(unittest.TestCase):
         reply = guard.template_reply("宿舍东西坏了怎么报修？")
         self.assertIsNotNone(reply)
         self.assertIn("报修", reply)
+
+    def test_location_query_wifi_repair_uses_network_repair_fact(self):
+        reply = guard.template_reply("我室友说连不上校园wifi了，这个该去哪报修啊？")
+
+        self.assertIsNotNone(reply)
+        self.assertIn("爱城院", reply)
+        self.assertNotIn("这个我不太确定", reply)
 
     def test_location_query_express_pickup(self):
         """「我要取快递」→ 关键词强匹配到快递点（无地点疑问词但分数足够）"""
@@ -297,6 +406,13 @@ class BoundaryGuardTest(unittest.TestCase):
         self.assertIsNotNone(reply)
         self.assertIn("打印", reply)
         self.assertNotIn("查不了", reply)  # 不是 private_records 的回复
+
+    def test_print_transcript_which_place_uses_safe_reply(self):
+        reply = guard.safe_reply("我想打印一份成绩单交材料用，学校哪个地方能打印啊？")
+
+        self.assertIsNotNone(reply)
+        self.assertIn("行政楼一楼自助终端", reply)
+        self.assertNotIn("刷校园卡", reply)
 
     def test_action_commitment_gets_safe_short_reply(self):
         """用户已经决定下一步或收尾时，不应交给模型自由发挥校园景物"""

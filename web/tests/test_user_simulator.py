@@ -29,6 +29,7 @@ class UserSimulatorTest(unittest.TestCase):
         self.assertIn("偏内向", system)
         self.assertIn("对大学课程有点担心", system)
         self.assertIn("信电会不会很难", system)
+        self.assertIn("必须严格完成本轮任务", system)
 
     def test_build_user_messages_includes_conversation_summary(self):
         messages = user_simulator.build_user_messages(
@@ -51,6 +52,17 @@ class UserSimulatorTest(unittest.TestCase):
             )
             self.assertIsInstance(result, str)
             self.assertGreater(len(result), 0)
+
+    def test_generate_user_message_falls_back_when_api_returns_blank(self):
+        with patch("user_simulator._call_api", return_value="  "):
+            result = user_simulator.generate_user_message(
+                character=self.character,
+                intent="已经开学一周了，提到已经开学和第一周。",
+                conversation_summary="",
+                forbid_patterns=[],
+            )
+
+        self.assertIn("已经开学一周", result)
 
     def test_generate_user_message_drops_role_prefix(self):
         with patch("user_simulator._call_api", return_value="新生: 课程好难啊"):
@@ -93,6 +105,8 @@ class UserSimulatorPressureTest(unittest.TestCase):
         self.assertIn("course_rhythm", text)
         self.assertIn("turn 3 of 8", text)
         self.assertIn("do not say probe", text)
+        self.assertIn("Strictly complete the daily pressure goal", text)
+        self.assertNotIn("say goodbye if that feels realistic", text)
 
     def test_generate_pressure_user_message_strips_role_prefix(self):
         with patch("user_simulator._call_api", return_value="User: I am still worried."):
