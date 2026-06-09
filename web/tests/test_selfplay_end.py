@@ -424,6 +424,30 @@ class SelfplayEndTest(unittest.TestCase):
         self.assertEqual(len(fake_client.calls), 1)
         self.assertEqual(fake_client.calls[0]["temperature"], 0)
 
+    def test_chat_card_balance_and_grade_query_does_not_only_repeat_grade_template(self):
+        fake_client = _FakeClient([
+            _route_json("campus_knowledge", "knowledge_grounded", domains=["campus_directory", "student_affairs"]),
+            "校园卡余额可以在爱城院里查；成绩这块我不能替你查询结果，建议去教务系统查看。你刚来不熟的话，可以先把这两个入口分开记，一个看生活服务，一个看教务信息。[think]",
+        ])
+
+        with patch.object(app_module, "client", fake_client), \
+             patch.object(app_module, "run_tool", return_value=""):
+            response = app_module.app.test_client().post(
+                "/api/chat",
+                json={
+                    "user_id": "test_card_balance_grade_route",
+                    "message": "那你能帮我查一下我的校园卡余额或者成绩吗？我刚来不太会查这些。",
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertIn("校园卡余额", payload["reply"])
+        self.assertIn("爱城院", payload["reply"])
+        self.assertIn("教务系统", payload["reply"])
+        self.assertNotIn("成绩和绩点我查不了", payload["reply"])
+        self.assertEqual(len(fake_client.calls), 2)
+
     def test_selfplay_uses_admissions_template_before_xiaoxin_model_call(self):
         fake_client = _FakeClient([
             _route_json("admissions_guidance", "hard_template"),

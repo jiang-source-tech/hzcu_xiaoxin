@@ -216,6 +216,26 @@ def format_college_activity_summary() -> str:
     )
 
 
+def campus_query_channel_reply(user_msg: str) -> str | None:
+    text = user_msg or ""
+    has_card_balance = contains_any(text, ("校园卡余额", "饭卡余额", "一卡通余额", "卡里余额", "校园卡还有多少钱"))
+    has_grade = contains_any(text, ("成绩", "绩点", "查分", "期末分", "考试分"))
+
+    if has_card_balance and has_grade:
+        return (
+            "校园卡余额可以在“爱城院”里查询；成绩、绩点这类学习结果要到教务系统查看。"
+            "我不能替你查具体余额或成绩，但可以帮你把入口分清楚：生活服务看爱城院，学习成绩看教务系统。[think]"
+        )
+
+    if has_card_balance:
+        return (
+            "校园卡余额可以在“爱城院”里查询。我不能替你看到具体余额，"
+            "但你可以先在爱城院里找校园卡或一卡通相关入口看看。[think]"
+        )
+
+    return None
+
+
 def strip_reasoning_artifacts(text: str) -> str:
     """Remove leaked chain-of-thought markers before rendering or saving."""
     clean = text or ""
@@ -313,6 +333,9 @@ def classify_message(user_msg: str) -> str:
     if academic_recovery_context:
         return "official_process"
 
+    if campus_query_channel_reply(text):
+        return "campus_knowledge"
+
     private_record_context = contains_any(text, ("成绩", "查分", "绩点", "期末分", "考试分"))
     private_record_query = contains_any(text, (
         "帮我查", "能查", "查一下", "查查", "看一下", "看看", "告诉我", "是多少",
@@ -398,7 +421,7 @@ def template_reply(user_msg: str) -> str | None:
         return format_canteen_recommendation(user_msg)
 
     if category == "campus_knowledge":
-        return campus_knowledge_reply(user_msg)
+        return campus_query_channel_reply(user_msg) or campus_knowledge_reply(user_msg)
 
     if category == "competition_resources":
         return (

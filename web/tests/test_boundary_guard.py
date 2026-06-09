@@ -69,6 +69,16 @@ class BoundaryGuardTest(unittest.TestCase):
         self.assertIn("以学校或学院最新通知为准", reply)
         self.assertNotIn("这个属于官方流程", reply)
 
+    def test_campus_card_balance_and_grade_query_gives_both_channels(self):
+        reply = guard.template_reply("那你能帮我查一下我的校园卡余额或者成绩吗？我刚来不太会查这些。")
+
+        self.assertIsNotNone(reply)
+        self.assertIn("校园卡余额", reply)
+        self.assertIn("爱城院", reply)
+        self.assertIn("成绩", reply)
+        self.assertIn("教务系统", reply)
+        self.assertNotIn("成绩和绩点我查不了", reply)
+
     def test_campus_directory_template_answers_known_location(self):
         reply = guard.template_reply("小芯，心理咨询中心在哪，怎么预约？")
 
