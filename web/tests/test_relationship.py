@@ -15,8 +15,7 @@ class TurnAnalyzerTest(unittest.TestCase):
     def test_prospective_anxiety_about_course_rhythm_gets_light_hook(self):
         result = turn_analyzer.analyze("信电会不会很难，我怕跟不上。")
 
-        self.assertIn(result["stage_signal"], {"prospective", "pre_enrollment"})
-        self.assertNotEqual(result["stage_signal"], "early_freshman")
+        self.assertEqual(result["stage_signal"], "prospective")
         self.assertEqual(result["mood"], "anxious")
         self.assertEqual(result["topic"], "course_rhythm")
         self.assertTrue(result["memory_worthy"])
@@ -30,12 +29,6 @@ class TurnAnalyzerTest(unittest.TestCase):
         self.assertIn("reply_strategy", result)
         self.assertNotIn("下次", str(result["next_hook"]))
 
-    def test_course_load_wording_with_xindian_is_course_rhythm_not_major_choice(self):
-        result = turn_analyzer.analyze("刚拿到信电录取通知，听说咱们院课排得挺满的，有点心慌。")
-
-        self.assertEqual(result["topic"], "course_rhythm")
-        self.assertTrue(result["next_hook"]["active"])
-
     def test_early_freshman_stage_signal_when_user_says_school_started(self):
         result = turn_analyzer.analyze("我已经开学了，第一周课好多，有点顶不住。")
 
@@ -43,16 +36,6 @@ class TurnAnalyzerTest(unittest.TestCase):
         self.assertEqual(result["mood"], "anxious")
         self.assertEqual(result["topic"], "course_rhythm")
         self.assertIn("reply_strategy", result)
-
-    def test_hypothetical_first_week_question_keeps_prospective_stage(self):
-        result = turn_analyzer.analyze(
-            "那如果开学后第一周上课就听不懂怎么办啊，我还没开学，有点担心。"
-        )
-
-        self.assertIn(result["stage_signal"], {"prospective", "pre_enrollment"})
-        self.assertNotEqual(result["stage_signal"], "early_freshman")
-        self.assertEqual(result["mood"], "anxious")
-        self.assertEqual(result["topic"], "course_rhythm")
 
     def test_refusing_topic_deactivates_current_hook(self):
         current_state = {
@@ -138,72 +121,6 @@ class TurnAnalyzerTest(unittest.TestCase):
         self.assertEqual(result["topic"], "course_rhythm")
         self.assertTrue(result["next_hook"]["active"])
 
-    def test_social_opening_anxiety_gets_social_adaptation_hook(self):
-        result = turn_analyzer.analyze("我有点担心开学后不知道怎么跟别人说话，感觉好难开口啊。")
-
-        self.assertEqual(result["mood"], "anxious")
-        self.assertEqual(result["topic"], "social_adaptation")
-        self.assertEqual(result["next_hook"]["topic"], "social_adaptation")
-        self.assertTrue(result["next_hook"]["active"])
-
-    def test_quiet_roommate_group_chat_gets_social_adaptation_hook(self):
-        result = turn_analyzer.analyze("我今天在新生群里看到室友们聊天了，但还是不敢说话，怕说错话。")
-
-        self.assertEqual(result["topic"], "social_adaptation")
-        self.assertEqual(result["next_hook"]["topic"], "social_adaptation")
-        self.assertTrue(result["next_hook"]["active"])
-
-    def test_competition_context_keeps_c_language_and_board_as_competition(self):
-        current_state = {
-            "recent_topic": "competition_interest",
-            "next_hook": {
-                "topic": "competition_interest",
-                "label": "竞赛兴趣",
-                "active": True,
-            },
-        }
-
-        result = turn_analyzer.analyze(
-            "那我现在完全零基础，第一步应该先学啥？C语言还是先买块板子回来自己捣鼓？",
-            current_state,
-        )
-
-        self.assertEqual(result["topic"], "competition_interest")
-        self.assertEqual(result["next_hook"]["topic"], "competition_interest")
-        self.assertTrue(result["next_hook"]["active"])
-
-    def test_casual_food_ack_after_refusal_does_not_reactivate_hook(self):
-        current_state = {
-            "user_stage": "early_freshman",
-            "next_hook": {
-                "topic": "course_rhythm",
-                "label": "课程节奏",
-                "active": False,
-            },
-        }
-
-        result = turn_analyzer.analyze(
-            "哇，煎包？我还没试过呢，明天中午就去北秀食堂尝尝，谢谢小芯推荐～",
-            current_state,
-        )
-
-        self.assertEqual(result["topic"], "general_checkin")
-        self.assertFalse(result["next_hook"]["active"])
-
-    def test_lonely_general_disclosure_is_not_social_adaptation_hook(self):
-        result = turn_analyzer.analyze("感觉最近好多事情都是自己一个人在扛，想找个人说说又不知道怎么开口。")
-
-        self.assertEqual(result["mood"], "lonely")
-        self.assertEqual(result["topic"], "general_checkin")
-        self.assertTrue(result["next_hook"]["active"])
-
-    def test_pressure_lonely_disclosure_with_anxious_words_keeps_active_general_hook(self):
-        result = turn_analyzer.analyze("最近事情好多啊，感觉有点喘不过气来，什么都得自己一个人搞定。")
-
-        self.assertIn(result["mood"], {"anxious", "lonely"})
-        self.assertEqual(result["topic"], "general_checkin")
-        self.assertTrue(result["next_hook"]["active"])
-
 class RelationshipStateTest(unittest.TestCase):
     def test_update_and_greeting_rules(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -276,50 +193,6 @@ class AppRelationshipTest(unittest.TestCase):
         self.assertEqual(payload["next_hook"]["topic"], "course_rhythm")
         self.assertEqual(saved["core_concern"], "担心信电课程跟不上")
 
-    def test_chat_core_builds_safe_location_fact_for_relationship_test(self):
-        app_module = self.app_module
-
-        class FakeMessage:
-            content = "行政楼往南校区进门右手边走，图书馆的钟楼远远就能看见。[think]"
-
-        class FakeChoice:
-            finish_reason = "stop"
-            message = FakeMessage()
-
-        class FakeResponse:
-            choices = [FakeChoice()]
-
-        class FakeCompletions:
-            def __init__(self):
-                self.calls = []
-
-            def create(self, **kwargs):
-                self.calls.append(kwargs)
-                return FakeResponse()
-
-        class FakeChat:
-            def __init__(self):
-                self.completions = FakeCompletions()
-
-        class FakeClient:
-            def __init__(self):
-                self.chat = FakeChat()
-
-        fake_client = FakeClient()
-        with tempfile.TemporaryDirectory() as tmp:
-            with patch.object(app_module, "client", fake_client):
-                payload = app_module.chat_core(
-                    "alice",
-                    "我要打印成绩单英文材料，你知道学校哪里能打印不？",
-                    tmp,
-                )
-
-        self.assertIn("行政楼一楼自助终端", payload["reply"])
-        self.assertIn("以终端页面", payload["reply"])
-        self.assertNotIn("右手边", payload["reply"])
-        self.assertNotIn("钟楼", payload["reply"])
-        self.assertEqual(len(fake_client.chat.completions.calls), 0)
-
     def test_greeting_route_context_once_per_day(self):
         app_module = self.app_module
         with tempfile.TemporaryDirectory() as tmp:
@@ -339,154 +212,6 @@ class AppRelationshipTest(unittest.TestCase):
 
         self.assertEqual(first["kind"], "contextual")
         self.assertIn("课程节奏", first["greeting"])
-        self.assertEqual(second["kind"], "generic")
-
-
-class FollowupSystemTest(unittest.TestCase):
-    """关心系统 followups 功能测试"""
-
-    def setUp(self):
-        self.data_dir = Path(tempfile.mkdtemp(prefix="test_followups_"))
-        self.user_id = "test_followup_user"
-
-    def tearDown(self):
-        import shutil
-        shutil.rmtree(self.data_dir, ignore_errors=True)
-
-    def test_concern_creates_followup(self):
-        """用户表达课程焦虑 → 创建 concern followup"""
-        state = relationship_state.default_state()
-        analysis = turn_analyzer.analyze("信电会不会很难，我怕跟不上。", state)
-        state = relationship_state.update_after_turn(state, analysis)
-
-        followups = state.get("followups", [])
-        self.assertGreater(len(followups), 0)
-        self.assertEqual(followups[0]["kind"], "concern")
-        self.assertEqual(followups[0]["status"], "active")
-
-    def test_repeated_concern_increases_intensity(self):
-        """多次提到同一问题 → mention_count 增加"""
-        state = relationship_state.default_state()
-
-        # 使用相似措辞确保匹配到同一个 label
-        for msg in ["C语言好难，指针搞不懂", "C语言的指针还是不会", "C语言太难了"]:
-            analysis = turn_analyzer.analyze(msg, state)
-            state = relationship_state.update_after_turn(state, analysis)
-
-        followups = state.get("followups", [])
-        self.assertGreater(len(followups), 0, "应至少创建一个 followup")
-        mention_counts = [f.get("mention_count", 0) for f in followups]
-        self.assertGreaterEqual(max(mention_counts), 2, "重复提到应增加 mention_count")
-
-    def test_refusal_deactivates_hook(self):
-        """用户说聊点别的 → next_hook 应失活"""
-        state = relationship_state.default_state()
-
-        # 先创建一个 active hook
-        analysis = turn_analyzer.analyze("信电会不会很难，我怕跟不上。", state)
-        state = relationship_state.update_after_turn(state, analysis)
-        self.assertTrue(state["next_hook"].get("active"))
-
-        # 用户拒绝
-        analysis2 = turn_analyzer.analyze("聊点别的吧，累了", state)
-        state = relationship_state.update_after_turn(state, analysis2)
-        self.assertFalse(state["next_hook"].get("active"),
-                         "用户说聊点别的后 hook 应失活")
-
-    def test_refusal_archives_matching_followup_for_generic_greeting(self):
-        """拒绝旧话题后，不应在下一天问候里继续追旧 followup"""
-        state = relationship_state.default_state()
-        analysis = turn_analyzer.analyze("C语言指针好难，我搞不懂。", state)
-        state = relationship_state.update_after_turn(state, analysis)
-        self.assertTrue(any(f.get("status") == "active" for f in state.get("followups", [])))
-
-        analysis2 = turn_analyzer.analyze("别聊这个了，我今天不想讨论课程的事。", state)
-        state = relationship_state.update_after_turn(state, analysis2)
-
-        self.assertFalse(state["next_hook"].get("active"))
-        self.assertFalse(any(f.get("status") == "active" for f in state.get("followups", [])))
-
-        relationship_state.save_state(self.data_dir, self.user_id, state)
-        greeting = relationship_state.greeting_payload(self.data_dir, self.user_id, today="2026-06-09")
-        self.assertEqual(greeting["kind"], "generic")
-        self.assertNotIn("课程节奏", greeting["greeting"])
-
-    def test_followups_survive_save_load_cycle(self):
-        """followups 在 save/load 后保持"""
-        state = relationship_state.default_state()
-        analysis = turn_analyzer.analyze("信电会不会很难，我怕跟不上。", state)
-        state = relationship_state.update_after_turn(state, analysis)
-
-        relationship_state.save_state(self.data_dir, self.user_id, state)
-        loaded = relationship_state.load_state(self.data_dir, self.user_id)
-
-        self.assertEqual(
-            len(loaded.get("followups", [])),
-            len(state.get("followups", [])),
-        )
-
-    def test_followups_prompt_includes_active_items(self):
-        """活跃 followups 应出现在 prompt 中"""
-        state = relationship_state.default_state()
-        analysis = turn_analyzer.analyze("C语言好难，指针完全搞不懂", state)
-        state = relationship_state.update_after_turn(state, analysis)
-
-        prompt = relationship_state.followups_prompt(state)
-        self.assertIn("关心的线索", prompt)
-        # label 中应包含 C语言 或 指针
-        self.assertTrue("C语言" in prompt or "指针" in prompt or "C语言学习" in prompt,
-                        f"prompt should contain followup label, got: {prompt[:200]}")
-
-    def test_decision_detection(self):
-        """纠结考研应创建 decision followup"""
-        state = relationship_state.default_state()
-        analysis = turn_analyzer.analyze("我在纠结要不要考研", state)
-        state = relationship_state.update_after_turn(state, analysis)
-
-        followups = state.get("followups", [])
-        decisions = [f for f in followups if f["kind"] == "decision"]
-        self.assertGreater(len(decisions), 0)
-
-    def test_no_followup_for_neutral_chat(self):
-        """普通聊天不应创建 followup"""
-        state = relationship_state.default_state()
-        analysis = turn_analyzer.analyze("嗯，我知道了，谢谢你小芯", state)
-        state = relationship_state.update_after_turn(state, analysis)
-
-        # 不应新增 followup
-        self.assertEqual(
-            len(state.get("followups", [])), 0,
-            "普通聊天不应创建 followup"
-        )
-
-    def test_greeting_uses_followup(self):
-        """问候应引用活跃 followup"""
-        state = relationship_state.default_state()
-        analysis = turn_analyzer.analyze("信电会不会很难，我怕跟不上。", state)
-        state = relationship_state.update_after_turn(state, analysis)
-        relationship_state.save_state(self.data_dir, self.user_id, state)
-
-        payload = relationship_state.greeting_payload(
-            self.data_dir, self.user_id, today="2026-06-08"
-        )
-        self.assertEqual(payload["kind"], "contextual")
-        self.assertIn("课程", payload["greeting"])
-
-    def test_contextual_greeting_for_same_followup_only_once_across_days(self):
-        """同一个 followup 没有新用户输入时，只轻接一次"""
-        state = relationship_state.default_state()
-        analysis = turn_analyzer.analyze("信电会不会很难，我怕跟不上。", state)
-        state = relationship_state.update_after_turn(state, analysis)
-        relationship_state.save_state(self.data_dir, self.user_id, state)
-
-        first = relationship_state.greeting_payload(
-            self.data_dir, self.user_id, today="2026-06-08"
-        )
-        second = relationship_state.greeting_payload(
-            self.data_dir, self.user_id, today="2026-06-09"
-        )
-
-        self.assertEqual(first["kind"], "contextual")
         self.assertEqual(second["kind"], "generic")
 
 

@@ -3,6 +3,8 @@ from pathlib import Path
 
 
 SKILL_MD = Path(__file__).resolve().parents[2] / "skills" / "xiaoxin-senior" / "SKILL.md"
+PROMPTS_DIR = Path(__file__).resolve().parents[2] / "skills" / "xiaoxin-senior" / "prompts"
+PROMPT_BUILDER = Path(__file__).resolve().parents[2] / "skills" / "xiaoxin-senior" / "tools" / "prompt_builder.py"
 
 
 class SkillBoundariesTest(unittest.TestCase):
@@ -35,47 +37,27 @@ class SkillBoundariesTest(unittest.TestCase):
         self.assertNotIn("| 鼓励 | 「没事，学长当年也这样。」 |", self.skill)
         self.assertNotIn("「代码跑不通？正常，学长当年debug了两天两夜", self.skill)
 
-    def test_structured_knowledge_stays_out_of_skill_prompt(self):
-        self.assertIn("结构化知识库", self.skill)
-        self.assertIn("campus_life.json", self.skill)
-        self.assertIn("campus_directory.json", self.skill)
-        self.assertIn("student_affairs_qa.json", self.skill)
-
-        detailed_facts = [
-            "北秀食堂（北校区）：智慧食堂",
-            "晨苑餐厅（南校区）：网红食堂",
-            "民间说法\"南晨北秀\"",
-            "有热水器（夜间约23:30左右停热水）",
-            "最近地铁站：3号线/5号线善贤站",
-        ]
-        for fact in detailed_facts:
-            with self.subTest(fact=fact):
-                self.assertNotIn(fact, self.skill)
-
-        self.assertNotIn("必须先完整列出知识库中的餐饮点", self.skill)
-
-    def test_canteen_answers_keep_boundaries_without_embedding_fact_list(self):
+    def test_canteen_answers_require_complete_known_list_and_location_boundary(self):
+        self.assertIn("web/knowledge/campus_life.json", self.skill)
+        self.assertIn("web/knowledge/campus_directory.json", self.skill)
+        self.assertIn("web/knowledge/student_affairs_qa.json", self.skill)
         self.assertIn("食堂回答规则", self.skill)
-        self.assertIn("具体食堂名称、校区、公开描述和已知餐饮点以结构化知识库为准", self.skill)
+        self.assertIn("以 `campus_life.json` 为准", self.skill)
         self.assertIn("不能编造", self.skill)
         self.assertIn("具体楼号、楼层、门牌号和实时营业时间", self.skill)
         self.assertIn("食堂推荐边界", self.skill)
         self.assertIn("不能编造具体菜品口味、排行、价格、窗口位置或营业时间", self.skill)
         self.assertIn("不要记忆", self.skill)
+        self.assertNotIn("休闲餐厅", self.skill)
+        self.assertNotIn("煎包", self.skill)
+        self.assertNotIn("瘦肉丸", self.skill)
+        self.assertNotIn("送餐机器人", self.skill)
 
-    def test_express_answers_do_not_use_takeout_lockers_or_assume_dorm(self):
-        self.assertIn("快递回答规则", self.skill)
-        self.assertIn("外卖柜不是快递点", self.skill)
-        self.assertTrue(
-            "不能按“宿舍楼下”判断" in self.skill
-            or '不能按"宿舍楼下"判断' in self.skill
-        )
+    def test_prompt_layout_stays_cache_friendly_two_file_style(self):
+        prompt_files = sorted(path.name for path in PROMPTS_DIR.glob("*.md"))
 
-    def test_fact_errand_replies_do_not_invent_campus_scenery_or_routes(self):
-        self.assertIn("事实型办事回复规则", self.skill)
-        self.assertIn("秋天银杏超美", self.skill)
-        self.assertIn("图书馆钟楼远远能看见", self.skill)
-        self.assertIn("进门右手边走", self.skill)
+        self.assertEqual(prompt_files, ["growth_protocol.md", "memory_protocol.md"])
+        self.assertFalse(PROMPT_BUILDER.exists())
 
     def test_school_profile_uses_updated_official_figures(self):
         self.assertIn("开设34个本科招生专业", self.skill)

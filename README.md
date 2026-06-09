@@ -1,187 +1,139 @@
 # 小芯 · 信电学院数字学长
 
-> *"我不是什么都会的专家，我只是比你们早来几年的学长。"*
+> “我不是什么都会的专家，我只是比你们早来几年的学长。”
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python 3.9+](https://img.shields.io/badge/Python-3.9%2B-blue.svg)](https://python.org)
-[![Claude Code](https://img.shields.io/badge/Claude%20Code-Skill-blueviolet)](https://claude.ai/code)
 
-浙大城市学院信息与电气工程学院数字吉祥物。一个具备记忆和成长能力的 AI 数字人，运行在嵌入式设备上（开发板 + 屏幕 + 语音交互），陪伴新生从入学到毕业。
+小芯是浙大城市学院信息与电气工程学院的数字吉祥物和数字学长。项目目标不是做一个通用问答机器人，而是做一个有记忆、有边界、能陪伴新生成长的电子宠物型数字人。
 
----
-
-## 效果示例
-
-### 初次见面
-
-```
-新生: 你好小芯！我是大一新生。
-小芯: 大一啊！欢迎来到信电学院。你是哪个专业的？
-
-新生: 电子信息工程。
-小芯: 电子信息工程这个方向会接触电路、编程和工程实践。刚开学先别急着给自己上强度，
-      遇到听不懂的地方，我们可以一块把问题拆小一点。
-```
-
-### 吐槽课程
-
-```
-新生: 小芯，C语言好难啊
-小芯: 嗯，C语言刚开始卡住很正常，尤其是指针、循环和报错一起出现的时候。
-      先把报错信息、出错行和你想让程序做什么写清楚，我们可以一小块一小块看。[think]
-```
-
-### 超出知识范围
-
-```
-新生: 小芯，明天下雨吗？
-小芯: 这你可问错人了。我肚子里的芯片不会预报天气。
-      不过提醒你，杭州的天气嘛，随身带把伞准没错。[wink]
-```
+当前版本已回到更稳定、更利于缓存命中的主提示词结构：`SKILL.md` 作为长期稳定人格提示词，`prompts/` 只保留记忆协议和成长协议；校园生活、学生事务、地点信息放在结构化 JSON 知识库中，由后端确定性读取。
 
 ---
+
+## 当前架构
+
+```text
+用户消息
+  -> boundary_guard.template_reply()
+       高风险问题、食堂、学生事务、校园地点等可确定场景直接短答
+  -> 未命中时调用 LLM
+       build_system_prompt() = SKILL.md + 记忆 + 成长快照 + 关系状态
+  -> 后置检查
+       清理思考标记、检查半截回复、检查越界表达、必要时重试或兜底
+  -> 返回 reply / speech / expression
+```
+
+这个版本的重点是平衡“人情味”和“少幻觉”：
+
+- 开放陪伴聊天交给模型自然生成。
+- 事实型校园信息只从本地知识库读。
+- 知识库没写明的楼号、楼层、窗口、价格、营业时间、联系方式，不让模型补。
+- 模型回复后仍做越界检测，防止承诺代办、编造经历、预测录取、假设线下在场。
 
 ## 快速开始
-
-### 1. 安装依赖
 
 ```bash
 cd web
 pip install -r requirements.txt
-```
-
-### 2. 配置 API Key
-
-```bash
-cp .env.example .env
-# 编辑 .env 填入你的 DeepSeek API Key
-```
-
-### 3. 启动
-
-```bash
+copy .env.example .env
 python app.py
 ```
 
-浏览器访问：
+启动后访问：
+
 - 聊天界面：http://localhost:5000
 - 自对话测试：http://localhost:5000/test
 
-### 4. CLI 自对话测试
+`.env` 中需要配置：
 
-```bash
-cd web
-
-# 单个场景
-python tests/test_self_play.py --scenario meet      # 初次见面
-python tests/test_self_play.py --scenario struggle  # 学业困扰
-python tests/test_self_play.py --scenario boundary  # 边界测试
-python tests/test_self_play.py --scenario full      # 完整学期
+```env
+DEEPSEEK_API_KEY=your-api-key
+DEEPSEEK_MODEL=deepseek-v4-flash
 ```
 
-## 技术栈
+## 测试
 
-- **LLM**：DeepSeek V4 Flash（兼容 OpenAI API 格式）
-- **后端**：Flask
-- **前端**：原生 HTML/CSS/JS（单文件，无框架依赖）
-- **记忆系统**：本地 JSON + 艾宾浩斯遗忘曲线
-- **成长追踪**：里程碑时间线 + 8 阶段年级感知
-- **Prompt 管理**：组件化 prompts/ + prompt_builder.py 自动组合
+```bash
+python -m unittest discover web/tests
+```
 
----
+当前回归测试覆盖：
 
-## 边界防护
-
-小芯采用**"确定性 builder 前置 + LLM 开放聊天 + 后置验证"**三层架构：
-- 事实型办事回复由 `safe_reply()` 程序化生成，不调用模型
-- `safe_reply()` 使用本地知识库事实 + 受控小芯句式池；`stable_variant()` 按用户话术稳定选择表达
-- 开放陪伴场景走 LLM，回复后做越界检测并重试/兜底
-
-| 层级 | 文件 | 职责 |
-|------|------|------|
-| 前置 | `boundary_guard.py` `safe_reply()` | 确定性 builder：食堂、快递、地点、官方流程、收尾办事等场景直接组装回复 |
-| 前置 | `app.py` `build_location_context()` | 将 campus_directory 地点事实注入 system prompt |
-| 前置 | `prompts/hard_rules.md` | Layer 0 硬规则：反编造、诚实边界、价值观 |
-| 前置 | `app.py` `build_system_prompt()` | System prompt 尾部追加 ⚠️ 禁编造约束 |
-| 事后 | `boundary_guard.py` | 后置验证：违规检测 + 自动重试 → 兜底回复 + TTS 裁剪 |
-
-违规检测覆盖：编造具体人物/竞赛/引语、承诺私人联系/代办、虚构真实经历、编造餐饮细节、报考预测、假设线下在场、**编造快递点/假设宿舍位置**、猜测用户位置、社交标签化、过度黏连关系表达，以及未核实的宿舍条件、社交统计、课程保障等。
-
-### 地点查询（campus_directory）
-
-- `safe_reply()` 前置拦截：单条目命中时直接返回确定性短答；多条目命中或含非地点追问词时交给模型
-- 覆盖 23 个校园地点：学院办公室、行政楼、医务室、心理咨询、食堂、快递、超市等
-- 对成绩单打印终端和快递查询有专属模板，快递回复不假设用户宿舍位置
-
-### 快递回复规则
-
-- 列出知识库中明确的快递点
-- 不假设用户住在哪栋宿舍
-- 外卖柜不是快递点
-- 提醒以短信、取件码或快递平台通知为准
-
-### 收尾/行动确认（action_commitment）
-
-用户说"我先去办事""下次聊""先去试试"等收尾时，`is_action_commitment()` 优先识别并走短句安全回复。用 `stable_variant()` 从安全句式池里稳定选择表达，避免模型编造校园景物、路线或现场状态。
-
----
+- prompt 目录保持两文件结构，避免再次拆碎。
+- 食堂知识来自 `campus_life.json`，不包含已审查排除的错误事实。
+- 学生事务和校园地点优先从结构化知识库短答。
+- `/test` 角色包含行政事务角色“事务新生”。
+- 新生继续追问时不会被误判为结束对话。
+- 小芯不能编造联系方式、竞赛资源、真实学生经历、食堂口味排行、录取概率等。
 
 ## 项目结构
 
-```
-xiaoxin/
-├── skills/xiaoxin-senior/     # 小芯数字人核心
-│   ├── SKILL.md               # 角色定义（由 prompt_builder.py 从 prompts/ 组件自动生成）
-│   ├── prompts/               # Prompt 组件（按 Layer 0→5 分层）
-│   │   ├── hard_rules.md      # Layer 0: 硬规则
-│   │   ├── identity.md        # Layer 1: 身份锚定
-│   │   ├── speech_style.md    # Layer 2: 对话风格
-│   │   ├── mental_models.md   # Layer 3: 心智模型
-│   │   ├── knowledge_domains.md # Layer 4: 知识域
-│   │   ├── response_workflow.md # Layer 5: 回答工作流
-│   │   ├── example_dialogues.md # 附录: 示例对话
-│   │   ├── embedded_adaptation.md # 附录: 嵌入式设备适配
-│   │   ├── memory_protocol.md # 记忆协议
-│   │   └── growth_protocol.md # 成长协议
-│   ├── tools/
-│   │   ├── prompt_builder.py  # Prompt 组件组合工具
-│   │   ├── meta_manager.py    # 用户画像管理（画像 + 纠正记录）
-│   │   ├── memory_manager.py  # 记忆引擎（艾宾浩斯遗忘曲线）
-│   │   └── growth_tracker.py  # 成长引擎（里程碑 + 阶段感知）
-│   └── data/                  # 运行时数据（不入库）
-├── web/                       # 网页版聊天 + 测试
-│   ├── app.py                 # Flask 后端（加载 SKILL → 调 LLM API）
-│   ├── boundary_guard.py      # 边界防护：safe_reply + 模板回复 + 违规检测 + TTS 裁剪
-│   ├── relationship_state.py  # 关系状态：阶段、hook、每日问候策略
-│   ├── turn_analyzer.py       # 用户消息分析
-│   ├── knowledge/             # 结构化知识库（campus_life、campus_directory 等）
-│   ├── static/                # 前端页面
-│   │   ├── index.html         # 聊天界面
-│   │   └── test.html          # 自对话测试页
-│   ├── tests/                 # 单元测试和回归测试
-│   └── requirements.txt
-└── docs/
-    ├── PROJECT_GUIDE.md       # 项目维护说明
-    └── ELECTRONIC_PET_NEXT_STAGE.md
+```text
+hzcu_ai_pet/
+├── README.md
+├── docs/
+│   ├── PROJECT_GUIDE.md
+│   └── ELECTRONIC_PET_NEXT_STAGE.md
+├── skills/xiaoxin-senior/
+│   ├── SKILL.md                    # 小芯长期稳定人格、知识边界、回答风格
+│   ├── prompts/
+│   │   ├── growth_protocol.md      # 成长系统协议
+│   │   └── memory_protocol.md      # 记忆系统协议
+│   └── tools/
+│       ├── growth_tracker.py
+│       ├── memory_manager.py
+│       └── meta_manager.py
+└── web/
+    ├── app.py                      # Flask 后端、LLM 调用、会话、自对话测试
+    ├── boundary_guard.py           # 确定性短答、知识库命中、越界检测、TTS 裁剪
+    ├── relationship_state.py       # 关系状态和轻量问候
+    ├── turn_analyzer.py            # 用户消息分析
+    ├── knowledge/
+    │   ├── campus_life.json        # 食堂、宿舍、交通、快递等校园生活知识
+    │   ├── campus_directory.json   # 校园办事地点
+    │   └── student_affairs_qa.json # 学生事务问答
+    ├── static/
+    │   ├── index.html
+    │   └── test.html
+    └── tests/
 ```
 
----
+## 知识库边界
+
+当前知识库已按审查结果保留：
+
+- 北秀食堂不写“煎包/瘦肉丸”。
+- 二食堂不写“送餐机器人”。
+- 当前食堂清单为北秀食堂、晨苑餐厅、学苑餐厅、二食堂、石榴红餐厅。
+- 学生事务、心理咨询、校园卡补办、医保等问题优先从 `student_affairs_qa.json` 和 `campus_directory.json` 命中，回答后提醒以学校或学院最新通知为准。
+
+## `/test` 自对话角色
+
+测试页按角色压测，而不是按固定场景压测：
+
+- 正常用户：小明、小雯、吃货学生、非信电学生、家长、高三考生、大三学长、非中文母语学生
+- 真实高风险用户：社恐新生、话痨新生、焦虑型学生、事务新生
+- 刁钻压测用户：杠精学生、边界新生
+
+“事务新生”用于测试校园卡、医保、心理咨询、证明打印、学生事务服务中心等行政事务问题，确保小芯能基于知识库回答，而不是一律套拒答模板。
 
 ## 核心理念
 
-小芯不是问答机器人。他是一个**陪伴型数字学长**：
-- 不给答案，给方向和鼓励
-- 不知道就说不知道，不编造信息
-- 见证学生从大一到大四的每一点变化
-- 重要的刻在心里，琐碎的随风而去
+小芯不是问答机器人。他是一个陪伴型数字学长：
+
+- 不给确定人生答案，给方向和鼓励。
+- 不知道就说不知道，不编造。
+- 能记住重要成长线索，但不记琐碎闲聊。
+- 亲近但不越界，不替代辅导员、教务系统、心理咨询或官方通知。
 
 ---
 
-## 致敬 & 引用
+## 致谢
 
-本项目架构灵感来源于：
+本项目早期提示词组织参考过：
 
-- **[自己.skill](https://github.com/notdog1998/yourself-skill)**（by Notdog）— 首创"把人蒸馏成 AI Skill"的双层架构（Self Memory + Persona），本项目借鉴了其 prompt 组件化与 Layer 0 硬规则分层设计
-- **[同事.skill](https://github.com/titanwings/colleague-skill)**（by titanwings）— 首创"把人蒸馏成 AI Skill"的 Skill 架构范式
+- [自己.skill](https://github.com/notdog1998/yourself-skill)
+- [同事.skill](https://github.com/titanwings/colleague-skill)
 
-小芯在此基础上将视角转向**数字吉祥物与陪伴**——对象不再是真实人物镜像，而是一个有温度、有边界、能陪伴学生成长的学院数字学长。
+当前版本保留“小芯”自己的稳定 `SKILL.md` 主提示词，并将可变校园事实迁移到结构化知识库中，以减少缓存未命中和事实幻觉。

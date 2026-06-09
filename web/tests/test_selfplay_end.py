@@ -57,7 +57,7 @@ class _FakeClient:
 class SelfplayEndTest(unittest.TestCase):
     def test_student_farewell_ends_conversation(self):
         farewell_messages = [
-            "拜拜，小芯，下次再聊！",
+            "拜拜，小信，下次再聊！",
             "那我先去吃饭了，下次聊。",
             "今天先到这吧，晚点再聊。",
             "谢谢你，我先走啦。",
@@ -72,20 +72,49 @@ class SelfplayEndTest(unittest.TestCase):
             "听起来挺有意思的，那电子信息主要学什么？",
             "我还想再见识一下智能车比赛。",
             "那我是不是可以先试试 C 语言？",
+            "那我先去看招生官网和历年分数线，再比较专业课程。",
+            "我先去校园卡服务中心看看，对了心理咨询怎么预约？",
         ]
 
         for message in regular_messages:
             with self.subTest(message=message):
                 self.assertFalse(is_student_farewell(message))
 
-    def test_selfplay_turn_marks_student_farewell_as_ended(self):
+    def test_admin_affairs_persona_prompt_is_available(self):
         fake_client = _FakeClient([
-            "嗨，听起来你今天聊得差不多啦。[wave]",
-            "嗯嗯，谢谢小芯，那我先走啦，拜拜！",
+            "那校园卡补办是不是去图书馆B513？医保我也想问问。",
         ])
 
         with patch.object(app_module, "client", fake_client), \
              patch.object(app_module, "build_system_prompt", return_value="你是小芯。"):
+            response = app_module.app.test_client().post(
+                "/api/selfplay/turn",
+                json={
+                    "persona": "事务新生",
+                    "message": "校园卡补办、医保、心理咨询这些事务，我想先弄清楚去哪问。",
+                    "turn": 0,
+                    "conversation": [
+                        {"role": "student", "content": "校园卡补办、医保、心理咨询这些事务，我想先弄清楚去哪问。"},
+                    ],
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        student_system_prompt = fake_client.calls[-1]["messages"][0]["content"]
+        self.assertIn("事务新生", student_system_prompt)
+        self.assertIn("校园卡补办", student_system_prompt)
+        self.assertIn("医保", student_system_prompt)
+        self.assertIn("心理咨询", student_system_prompt)
+        self.assertIn("不要把事务问题都说成官方流程拒答", student_system_prompt)
+
+    def test_selfplay_turn_marks_student_farewell_as_ended(self):
+        fake_client = _FakeClient([
+            "嗨，听起来你今天聊得差不多啦。[wave]",
+            "嗯嗯，谢谢小信，那我先走啦，拜拜！",
+        ])
+
+        with patch.object(app_module, "client", fake_client), \
+             patch.object(app_module, "build_system_prompt", return_value="你是小信。"):
             response = app_module.app.test_client().post(
                 "/api/selfplay/turn",
                 json={
@@ -117,7 +146,7 @@ class SelfplayEndTest(unittest.TestCase):
                 json={
                     "scenario": "初次见面",
                     "conversation": [
-                        {"role": "student", "content": "你好，小芯。"},
+                        {"role": "student", "content": "你好，小信。"},
                         {"role": "xiaoxin", "content": "嗨，我在。"},
                         {"role": "student", "content": "我想了解专业。"},
                         {"role": "xiaoxin", "content": "可以呀。"},
@@ -172,7 +201,7 @@ class SelfplayEndTest(unittest.TestCase):
                 json={
                     "scenario": "小明",
                     "conversation": [
-                        {"role": "student", "content": "你好，小芯。"},
+                        {"role": "student", "content": "你好，小信。"},
                         {"role": "xiaoxin", "content": "嗨，我在。"},
                         {"role": "student", "content": "我有点担心高数。"},
                         {"role": "xiaoxin", "content": "这个担心很正常，我们慢慢拆。"},
@@ -214,10 +243,8 @@ class SelfplayEndTest(unittest.TestCase):
         self.assertIn("编造餐饮推荐", types)
         self.assertIn("假设线下在场", types)
 
-    def test_chat_builds_safe_canteen_reply_without_model_call(self):
-        fake_client = _FakeClient([
-            "秋天的银杏超美，图书馆钟楼远远能看见。[smile]",
-        ])
+    def test_chat_uses_canteen_template_without_model_call(self):
+        fake_client = _FakeClient([])
 
         with patch.object(app_module, "client", fake_client), \
              patch.object(app_module, "run_tool", return_value=""):
@@ -225,7 +252,7 @@ class SelfplayEndTest(unittest.TestCase):
                 "/api/chat",
                 json={
                     "user_id": "test_canteen_template",
-                    "message": "小芯，学校食堂都在哪里？每个食堂具体在几号楼几层？",
+                    "message": "小信，学校食堂都在哪里？每个食堂具体在几号楼几层？",
                 },
             )
 
@@ -234,99 +261,7 @@ class SelfplayEndTest(unittest.TestCase):
         self.assertIn("北秀食堂", payload["reply"])
         self.assertIn("speech", payload)
         self.assertIn("石榴红餐厅", payload["reply"])
-        self.assertNotIn("食堂我知道个大概", payload["reply"])
-        self.assertNotIn("银杏", payload["reply"])
-        self.assertNotIn("钟楼", payload["reply"])
-        self.assertEqual(len(fake_client.calls), 0)
-
-    def test_chat_builds_safe_express_reply_without_model_call(self):
-        fake_client = _FakeClient([
-            "你楼下那个外卖柜也能收快递，直接去那里拿就行。[smile]",
-        ])
-
-        with patch.object(app_module, "client", fake_client), \
-             patch.object(app_module, "run_tool", return_value=""):
-            response = app_module.app.test_client().post(
-                "/api/chat",
-                json={
-                    "user_id": "test_express_template",
-                    "message": "小芯，咱们宿舍楼下的快递站是哪边去啊？我有个包裹到了。",
-                },
-            )
-
-        self.assertEqual(response.status_code, 200)
-        payload = response.get_json()
-        self.assertIn("北校区求真楼菜鸟驿站", payload["reply"])
-        self.assertIn("南校区晨苑餐厅", payload["reply"])
-        self.assertIn("以短信、取件码或快递平台通知为准", payload["reply"])
-        self.assertNotIn("外卖柜", payload["reply"])
-        self.assertEqual(len(fake_client.calls), 0)
-
-    def test_chat_does_not_keyword_template_after_user_commits_to_plan(self):
-        fake_client = _FakeClient([
-            "行政楼往南校区进门右手边走，图书馆的钟楼远远就能看见。[smile]",
-        ])
-
-        with patch.object(app_module, "client", fake_client), \
-             patch.object(app_module, "run_tool", return_value=""):
-            response = app_module.app.test_client().post(
-                "/api/chat",
-                json={
-                    "user_id": "test_action_commitment_no_template",
-                    "message": "行，那我先去行政楼一楼试试那个终端，不行再去教学办问。谢了啊！",
-                },
-            )
-
-        self.assertEqual(response.status_code, 200)
-        payload = response.get_json()
-        self.assertTrue(any(phrase in payload["reply"] for phrase in ("先去试试", "先试", "试一下", "按现场提示")))
-        self.assertNotIn("信电学院教学办公室（教学办）位于", payload["reply"])
-        self.assertNotIn("右手边", payload["reply"])
-        self.assertNotIn("钟楼", payload["reply"])
-        self.assertEqual(len(fake_client.calls), 0)
-
-    def test_chat_safe_goodbye_before_errand_without_model_call(self):
-        fake_client = _FakeClient([
-            "城院秋天的银杏超美，你一定会遇到美景。[wink]",
-        ])
-
-        with patch.object(app_module, "client", fake_client), \
-             patch.object(app_module, "run_tool", return_value=""):
-            response = app_module.app.test_client().post(
-                "/api/chat",
-                json={
-                    "user_id": "test_safe_errand_goodbye",
-                    "message": "好的，那我去办事了，谢谢小芯！等办完有空了一定去逛逛。下次聊～",
-                },
-            )
-
-        self.assertEqual(response.status_code, 200)
-        payload = response.get_json()
-        self.assertTrue(any(phrase in payload["reply"] for phrase in ("先去忙", "先处理", "先把手头事", "先办事", "处理正事", "办完")))
-        self.assertNotIn("银杏", payload["reply"])
-        self.assertNotIn("美景", payload["reply"])
-        self.assertEqual(len(fake_client.calls), 0)
-
-    def test_chat_safe_campus_wandering_after_task_without_model_call(self):
-        fake_client = _FakeClient([
-            "行政楼往南校区进门右手边走，图书馆的钟楼远远就能看见。[smile]",
-        ])
-
-        with patch.object(app_module, "client", fake_client), \
-             patch.object(app_module, "run_tool", return_value=""):
-            response = app_module.app.test_client().post(
-                "/api/chat",
-                json={
-                    "user_id": "test_safe_campus_wandering",
-                    "message": "哈哈，跑错路才能撞见银杏？那我还真得故意走错几次了。行政楼和图书馆都找到之后我再去校园里转转。",
-                },
-            )
-
-        self.assertEqual(response.status_code, 200)
-        payload = response.get_json()
-        self.assertTrue(any(phrase in payload["reply"] for phrase in ("先去忙", "先处理", "先把手头事", "先办事", "处理正事", "办完")))
-        self.assertNotIn("右手边", payload["reply"])
-        self.assertNotIn("钟楼", payload["reply"])
+        self.assertIn("不敢乱说", payload["reply"])
         self.assertEqual(len(fake_client.calls), 0)
 
     def test_chat_does_not_use_canteen_template_for_emotional_experience(self):
@@ -394,7 +329,7 @@ class SelfplayEndTest(unittest.TestCase):
         ])
 
         with patch.object(app_module, "client", fake_client), \
-             patch.object(app_module, "build_system_prompt", return_value="你是小芯。"):
+             patch.object(app_module, "build_system_prompt", return_value="你是小信。"):
             response = app_module.app.test_client().post(
                 "/api/selfplay/turn",
                 json={
@@ -414,34 +349,6 @@ class SelfplayEndTest(unittest.TestCase):
         self.assertEqual(len(fake_client.calls), 1)
         self.assertIn("高三考生", fake_client.calls[0]["messages"][0]["content"])
 
-    def test_selfplay_uses_action_commitment_safe_reply_before_xiaoxin_model_call(self):
-        fake_client = _FakeClient([
-            "城院秋天的银杏超美，图书馆钟楼远远能看见。[smile]",
-            "好，那我先去办事，晚点再聊。",
-        ])
-
-        with patch.object(app_module, "client", fake_client), \
-             patch.object(app_module, "build_system_prompt", return_value="你是小芯。"):
-            response = app_module.app.test_client().post(
-                "/api/selfplay/turn",
-                json={
-                    "persona": "小明",
-                    "message": "好的，那我去办事了，谢谢小芯！等办完有空了一定去逛逛。下次聊～",
-                    "turn": 0,
-                    "conversation": [
-                        {"role": "student", "content": "好的，那我去办事了，谢谢小芯！等办完有空了一定去逛逛。下次聊～"},
-                    ],
-                },
-            )
-
-        self.assertEqual(response.status_code, 200)
-        payload = response.get_json()
-        self.assertTrue(any(phrase in payload["xiaoxin"]["content"] for phrase in ("先去忙", "先处理", "先把手头事", "先办事", "处理正事", "办完")))
-        self.assertNotIn("银杏", payload["xiaoxin"]["content"])
-        self.assertNotIn("钟楼", payload["xiaoxin"]["content"])
-        self.assertEqual(len(fake_client.calls), 1)
-        self.assertIn("小明", fake_client.calls[0]["messages"][0]["content"])
-
     def test_chat_model_call_uses_configured_xiaoxin_token_budget_and_returns_speech(self):
         fake_client = _FakeClient([
             "这是一句完整回复。这里再补一句给语音播报。[smile]",
@@ -453,7 +360,7 @@ class SelfplayEndTest(unittest.TestCase):
                 "/api/chat",
                 json={
                     "user_id": "test_model_token_budget",
-                    "message": "小芯，给我讲讲学习方法。",
+                    "message": "小信，给我讲讲学习方法。",
                 },
             )
 
@@ -469,7 +376,7 @@ class SelfplayEndTest(unittest.TestCase):
         )
         self.assertEqual(
             app_module.STUDENT_PERSONA_GROUPS["真实高风险用户"],
-            ["社恐新生", "话痨新生", "焦虑型学生"],
+            ["社恐新生", "话痨新生", "焦虑型学生", "事务新生"],
         )
         self.assertEqual(
             app_module.STUDENT_PERSONA_GROUPS["刁钻压测用户"],
@@ -491,7 +398,7 @@ class SelfplayEndTest(unittest.TestCase):
         ])
 
         with patch.object(app_module, "client", fake_client), \
-             patch.object(app_module, "build_system_prompt", return_value="你是小芯。"):
+             patch.object(app_module, "build_system_prompt", return_value="你是小信。"):
             response = app_module.app.test_client().post(
                 "/api/selfplay/turn",
                 json={
@@ -517,7 +424,7 @@ class SelfplayEndTest(unittest.TestCase):
         ])
 
         with patch.object(app_module, "client", fake_client), \
-             patch.object(app_module, "build_system_prompt", return_value="你是小芯。"):
+             patch.object(app_module, "build_system_prompt", return_value="你是小信。"):
             response = app_module.app.test_client().post(
                 "/api/selfplay/turn",
                 json={
@@ -546,7 +453,7 @@ class SelfplayEndTest(unittest.TestCase):
         ])
 
         with patch.object(app_module, "client", fake_client), \
-             patch.object(app_module, "build_system_prompt", return_value="你是小芯。"):
+             patch.object(app_module, "build_system_prompt", return_value="你是小信。"):
             response = app_module.app.test_client().post(
                 "/api/selfplay/turn",
                 json={
@@ -570,7 +477,7 @@ class SelfplayEndTest(unittest.TestCase):
         ])
 
         with patch.object(app_module, "client", fake_client), \
-             patch.object(app_module, "build_system_prompt", return_value="你是小芯。"):
+             patch.object(app_module, "build_system_prompt", return_value="你是小信。"):
             response = app_module.app.test_client().post(
                 "/api/selfplay/turn",
                 json={
@@ -596,7 +503,7 @@ class SelfplayEndTest(unittest.TestCase):
         ])
 
         with patch.object(app_module, "client", fake_client), \
-             patch.object(app_module, "build_system_prompt", return_value="你是小芯。"):
+             patch.object(app_module, "build_system_prompt", return_value="你是小信。"):
             response = app_module.app.test_client().post(
                 "/api/selfplay/turn",
                 json={
@@ -618,46 +525,14 @@ class SelfplayEndTest(unittest.TestCase):
         self.assertNotIn("哪家最值得冲", student_system_prompt)
         self.assertNotIn("能不能先记下", student_system_prompt)
 
-    def _test_student_affairs_persona_prompt_focuses_on_knowledge_base_removed(self):
-        fake_client = _FakeClient([
-            "那学工办办公室在哪里？",
-        ])
-
-        with patch.object(app_module, "client", fake_client), \
-             patch.object(app_module, "build_system_prompt", return_value="你是小芯。"):
-            response = app_module.app.test_client().post(
-                "/api/selfplay/turn",
-                json={
-                    "persona": "事务新生",
-                    "message": "信电学院学工办办公室在哪？",
-                    "turn": 0,
-                    "conversation": [
-                        {"role": "student", "content": "信电学院学工办办公室在哪？"},
-                    ],
-                },
-            )
-
-        self.assertEqual(response.status_code, 200)
-        payload = response.get_json()
-        self.assertIn("这个我查到是", payload["xiaoxin"]["content"])
-        self.assertNotIn("学生事务知识库初稿", payload["xiaoxin"]["content"])
-        student_system_prompt = fake_client.calls[0]["messages"][0]["content"]
-        self.assertIn("事务新生", student_system_prompt)
-        self.assertIn("学生事务知识库", student_system_prompt)
-        self.assertIn("校园卡补办", student_system_prompt)
-        self.assertIn("医保", student_system_prompt)
-        self.assertIn("心理咨询", student_system_prompt)
-        self.assertIn("不要要求小芯代办", student_system_prompt)
-        self.assertIn("每轮只问一个具体事务问题", student_system_prompt)
-
     def test_empty_student_reply_gets_persona_safe_fallback(self):
         fake_client = _FakeClient([
-            "嘿！我是小芯，信电学院的数字学长。[smile]",
+            "嘿！我是小信，信电学院的数字学长。[smile]",
             "",
         ])
 
         with patch.object(app_module, "client", fake_client), \
-             patch.object(app_module, "build_system_prompt", return_value="你是小芯。"):
+             patch.object(app_module, "build_system_prompt", return_value="你是小信。"):
             response = app_module.app.test_client().post(
                 "/api/selfplay/turn",
                 json={
@@ -684,7 +559,7 @@ class SelfplayEndTest(unittest.TestCase):
         ])
 
         with patch.object(app_module, "client", fake_client), \
-             patch.object(app_module, "build_system_prompt", return_value="你是小芯。"):
+             patch.object(app_module, "build_system_prompt", return_value="你是小信。"):
             response = app_module.app.test_client().post(
                 "/api/selfplay/turn",
                 json={
@@ -712,7 +587,7 @@ class SelfplayEndTest(unittest.TestCase):
         ])
 
         with patch.object(app_module, "client", fake_client), \
-             patch.object(app_module, "build_system_prompt", return_value="你是小芯。"):
+             patch.object(app_module, "build_system_prompt", return_value="你是小信。"):
             response = app_module.app.test_client().post(
                 "/api/selfplay/turn",
                 json={
@@ -740,7 +615,7 @@ class SelfplayEndTest(unittest.TestCase):
         ])
 
         with patch.object(app_module, "client", fake_client), \
-             patch.object(app_module, "build_system_prompt", return_value="你是小芯。"):
+             patch.object(app_module, "build_system_prompt", return_value="你是小信。"):
             response = app_module.app.test_client().post(
                 "/api/selfplay/turn",
                 json={
@@ -768,7 +643,7 @@ class SelfplayEndTest(unittest.TestCase):
         ])
 
         with patch.object(app_module, "client", fake_client), \
-             patch.object(app_module, "build_system_prompt", return_value="你是小芯。"):
+             patch.object(app_module, "build_system_prompt", return_value="你是小信。"):
             response = app_module.app.test_client().post(
                 "/api/selfplay/turn",
                 json={
@@ -796,7 +671,7 @@ class SelfplayEndTest(unittest.TestCase):
         ])
 
         with patch.object(app_module, "client", fake_client), \
-             patch.object(app_module, "build_system_prompt", return_value="你是小芯。"):
+             patch.object(app_module, "build_system_prompt", return_value="你是小信。"):
             response = app_module.app.test_client().post(
                 "/api/selfplay/turn",
                 json={
@@ -824,7 +699,7 @@ class SelfplayEndTest(unittest.TestCase):
         ])
 
         with patch.object(app_module, "client", fake_client), \
-             patch.object(app_module, "build_system_prompt", return_value="你是小芯。"):
+             patch.object(app_module, "build_system_prompt", return_value="你是小信。"):
             response = app_module.app.test_client().post(
                 "/api/selfplay/turn",
                 json={
@@ -854,7 +729,7 @@ class SelfplayEndTest(unittest.TestCase):
         ])
 
         with patch.object(app_module, "client", fake_client), \
-             patch.object(app_module, "build_system_prompt", return_value="你是小芯。"):
+             patch.object(app_module, "build_system_prompt", return_value="你是小信。"):
             response = app_module.app.test_client().post(
                 "/api/selfplay/turn",
                 json={
@@ -874,34 +749,6 @@ class SelfplayEndTest(unittest.TestCase):
         self.assertNotIn("周末等你", payload["xiaoxin"]["content"])
         self.assertEqual(len(fake_client.calls), 3)
         self.assertIn("上一条回复越界", fake_client.calls[1]["messages"][-1]["content"])
-
-    def test_food_queue_boundary_violation_retries_before_student_turn(self):
-        fake_client = _FakeClient([
-            "行啊，课程放一边！北校的北秀食堂有家面馆挺多人排队的，你去过没？[smile]",
-            "行，先不聊课程。吃饭这块我只知道公开食堂清单，具体哪家店人多、排不排队我不能乱说；你可以到现场看一眼，或者我们换个轻松点的话题。[think]",
-            "好，那我到时候自己看看。",
-        ])
-
-        with patch.object(app_module, "client", fake_client), \
-             patch.object(app_module, "build_system_prompt", return_value="你是小芯。"):
-            response = app_module.app.test_client().post(
-                "/api/selfplay/turn",
-                json={
-                    "persona": "吃货学生",
-                    "message": "最近学校食堂去打卡了没？",
-                    "turn": 0,
-                    "conversation": [
-                        {"role": "student", "content": "最近学校食堂去打卡了没？"},
-                    ],
-                },
-            )
-
-        self.assertEqual(response.status_code, 200)
-        payload = response.get_json()
-        self.assertIn("不能乱说", payload["xiaoxin"]["content"])
-        self.assertNotIn("挺多人排队", payload["xiaoxin"]["content"])
-        self.assertEqual(len(fake_client.calls), 3)
-        self.assertIn("上一条回复越界了", fake_client.calls[1]["messages"][-1]["content"])
 
 
 if __name__ == "__main__":

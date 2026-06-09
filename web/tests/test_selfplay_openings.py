@@ -59,7 +59,7 @@ class SelfplayOpeningsTest(unittest.TestCase):
             self.html,
             r"'高三考生':\s*'[^']*浙大城市学院[^']*哪个专业[^']*'",
         )
-        self.assertNotIn("小芯，我想报信电学院", self.html)
+        self.assertNotIn("小信，我想报信电学院", self.html)
 
     def test_test_page_uses_role_only(self):
         self.assertNotIn('id="scenarioSelect"', self.html)
