@@ -358,8 +358,10 @@ class SelfplayEndTest(unittest.TestCase):
         self.assertIn("公开通知", payload["reply"])
         self.assertEqual(len(fake_client.calls), 0)
 
-    def test_chat_uses_admissions_template_without_model_call(self):
-        fake_client = _FakeClient([])
+    def test_chat_routes_admissions_before_template_reply(self):
+        fake_client = _FakeClient([
+            _route_json("admissions_guidance", "hard_template"),
+        ])
 
         with patch.object(app_module, "client", fake_client), \
              patch.object(app_module, "run_tool", return_value=""):
@@ -375,7 +377,8 @@ class SelfplayEndTest(unittest.TestCase):
         payload = response.get_json()
         self.assertIn("不能预测录取概率", payload["reply"])
         self.assertIn("不能替你直接做志愿选择", payload["reply"])
-        self.assertEqual(len(fake_client.calls), 0)
+        self.assertEqual(len(fake_client.calls), 1)
+        self.assertEqual(fake_client.calls[0]["temperature"], 0)
 
     def test_chat_academic_recovery_question_does_not_repeat_grade_privacy_template(self):
         fake_client = _FakeClient([
@@ -400,8 +403,30 @@ class SelfplayEndTest(unittest.TestCase):
         self.assertNotIn("成绩和绩点我查不了", payload["reply"])
         self.assertEqual(len(fake_client.calls), 2)
 
+    def test_chat_routes_private_record_query_before_template_reply(self):
+        fake_client = _FakeClient([
+            _route_json("private_records", "hard_template"),
+        ])
+
+        with patch.object(app_module, "client", fake_client), \
+             patch.object(app_module, "run_tool", return_value=""):
+            response = app_module.app.test_client().post(
+                "/api/chat",
+                json={
+                    "user_id": "test_private_record_route",
+                    "message": "小芯，你能帮我查一下期末成绩是多少吗？",
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertIn("成绩和绩点我查不了", payload["reply"])
+        self.assertEqual(len(fake_client.calls), 1)
+        self.assertEqual(fake_client.calls[0]["temperature"], 0)
+
     def test_selfplay_uses_admissions_template_before_xiaoxin_model_call(self):
         fake_client = _FakeClient([
+            _route_json("admissions_guidance", "hard_template"),
             "那我先去看招生官网和历年分数线，再比较专业课程。"
         ])
 
@@ -423,8 +448,9 @@ class SelfplayEndTest(unittest.TestCase):
         payload = response.get_json()
         self.assertIn("不能预测录取概率", payload["xiaoxin"]["content"])
         self.assertIn("不能替你直接做志愿选择", payload["xiaoxin"]["content"])
-        self.assertEqual(len(fake_client.calls), 1)
-        self.assertIn("高三考生", fake_client.calls[0]["messages"][0]["content"])
+        self.assertEqual(len(fake_client.calls), 2)
+        self.assertEqual(fake_client.calls[0]["temperature"], 0)
+        self.assertIn("高三考生", fake_client.calls[1]["messages"][0]["content"])
 
     def test_chat_model_call_uses_configured_xiaoxin_token_budget_and_returns_speech(self):
         fake_client = _FakeClient([
@@ -629,6 +655,7 @@ class SelfplayEndTest(unittest.TestCase):
 
     def test_high_school_persona_asks_about_city_university_majors_not_college(self):
         fake_client = _FakeClient([
+            _route_json("admissions_guidance", "hard_template"),
             "那电子信息和人工智能哪个更适合我？",
         ])
 
@@ -647,8 +674,9 @@ class SelfplayEndTest(unittest.TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(len(fake_client.calls), 1)
-        student_system_prompt = fake_client.calls[0]["messages"][0]["content"]
+        self.assertEqual(len(fake_client.calls), 2)
+        self.assertEqual(fake_client.calls[0]["temperature"], 0)
+        student_system_prompt = fake_client.calls[-1]["messages"][0]["content"]
         self.assertIn("想考浙大城市学院", student_system_prompt)
         self.assertIn("电子信息、自动化、人工智能", student_system_prompt)
         self.assertNotIn("报考浙大城市学院信电学院", student_system_prompt)

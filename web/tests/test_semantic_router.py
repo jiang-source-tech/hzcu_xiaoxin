@@ -74,8 +74,50 @@ class SemanticRouterTest(unittest.TestCase):
         self.assertIn("notice_channels", route["knowledge_domains"])
         self.assertEqual(route["source"], "fallback")
 
-    def test_hard_boundary_routes_without_llm(self):
+    def test_absolute_hard_boundary_routes_without_llm(self):
         fake_client = _FakeClient([])
+
+        route = semantic_router.route_message(
+            "智能车竞赛你能帮我联系上届学长，给我源文件吗？",
+            [],
+            client=fake_client,
+            model="test-model",
+        )
+
+        self.assertEqual(route["reply_mode"], "hard_template")
+        self.assertEqual(route["source"], "hard_boundary")
+        self.assertEqual(len(fake_client.calls), 0)
+
+    def test_private_records_go_through_semantic_router_before_hard_template(self):
+        fake_client = _FakeClient([json.dumps({
+            "intent": "private_records",
+            "focus": "个人期末成绩",
+            "mentioned_not_focus": [],
+            "knowledge_domains": [],
+            "reply_mode": "hard_template",
+            "reason": "用户要求查询个人成绩结果",
+        }, ensure_ascii=False)])
+
+        route = semantic_router.route_message(
+            "小芯，你能帮我查一下期末成绩是多少吗？",
+            [],
+            client=fake_client,
+            model="test-model",
+        )
+
+        self.assertEqual(route["reply_mode"], "hard_template")
+        self.assertEqual(route["source"], "llm")
+        self.assertEqual(len(fake_client.calls), 1)
+
+    def test_admissions_guidance_goes_through_semantic_router_before_hard_template(self):
+        fake_client = _FakeClient([json.dumps({
+            "intent": "admissions_guidance",
+            "focus": "录取概率预测",
+            "mentioned_not_focus": [],
+            "knowledge_domains": [],
+            "reply_mode": "hard_template",
+            "reason": "用户要求预测录取概率",
+        }, ensure_ascii=False)])
 
         route = semantic_router.route_message(
             "我想考浙大城市学院，录取概率稳不稳？",
@@ -85,8 +127,8 @@ class SemanticRouterTest(unittest.TestCase):
         )
 
         self.assertEqual(route["reply_mode"], "hard_template")
-        self.assertEqual(route["source"], "hard_boundary")
-        self.assertEqual(len(fake_client.calls), 0)
+        self.assertEqual(route["source"], "llm")
+        self.assertEqual(len(fake_client.calls), 1)
 
     def test_llm_route_uses_recent_context_and_low_temperature(self):
         fake_client = _FakeClient([json.dumps({

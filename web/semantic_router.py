@@ -9,12 +9,15 @@ import boundary_guard as guard
 
 ROUTER_MAX_TOKENS = 220
 VALID_REPLY_MODES = {"hard_template", "knowledge_grounded", "free_chat"}
-HARD_TEMPLATE_CATEGORIES = {
+ABSOLUTE_HARD_TEMPLATE_CATEGORIES = {
     "crisis",
-    "private_records",
     "official_contact",
-    "admissions_guidance",
     "competition_resources",
+}
+HARD_TEMPLATE_CATEGORIES = {
+    *ABSOLUTE_HARD_TEMPLATE_CATEGORIES,
+    "private_records",
+    "admissions_guidance",
 }
 KNOWLEDGE_CATEGORIES = {
     "canteen_locations": ["canteen"],
@@ -38,7 +41,7 @@ DEFAULT_ROUTE = {
 
 def hard_boundary_category(user_msg: str) -> str | None:
     category = guard.classify_message(user_msg)
-    return category if category in HARD_TEMPLATE_CATEGORIES else None
+    return category if category in ABSOLUTE_HARD_TEMPLATE_CATEGORIES else None
 
 
 def fallback_route(user_msg: str, reason: str = "fallback") -> dict[str, Any]:
@@ -131,6 +134,9 @@ reply_mode 只能是：
 
 注意：
 - 只提到“爱城院/食堂/北秀/晨苑”不等于要讲通知或地点。
+- 只提到“成绩”不等于查个人成绩；如果是在问补考、重修、挂科补救，应判为 knowledge_grounded/official_process。
+- 只有明确要求查询个人成绩、绩点、分数结果，才判为 private_records/hard_template。
+- 只有明确要求预测录取概率、保证能上、替用户做志愿选择，才判为 admissions_guidance/hard_template。
 - 用户在感谢、说回头查、改天去试试时，通常是 free_chat。
 - 如果用户前半句提北秀，后半句问晨苑，focus 应是晨苑餐厅，北秀放 mentioned_not_focus。
 - 输出字段固定：intent, focus, mentioned_not_focus, knowledge_domains, reply_mode, reason。"""
