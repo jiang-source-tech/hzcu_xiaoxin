@@ -272,8 +272,12 @@ def classify_message(user_msg: str) -> str:
         ))
         if canteen_location_question:
             return "canteen_locations"
-        if contains_any(text, ("最好吃", "推荐", "哪家好", "哪家强", "贵", "价格", "菜价", "窗口", "营业", "几点", "够味", "好吃")):
+        if contains_any(text, (
+            "最好吃", "推荐", "哪家好", "哪家强", "贵", "价格", "菜价", "窗口", "营业", "几点",
+            "够味", "好吃", "招牌", "值得", "绕路", "踩雷", "菜", "吃的",
+        )):
             return "canteen_recommendation"
+        return "open_chat"
 
     if campus_knowledge_reply(text):
         return "campus_knowledge"

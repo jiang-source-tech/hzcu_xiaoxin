@@ -80,6 +80,16 @@ class BoundaryGuardTest(unittest.TestCase):
 
         self.assertIsNone(reply)
 
+    def test_canteen_taste_question_does_not_trigger_location_knowledge(self):
+        reply = guard.template_reply("晨苑餐厅有没有什么招牌菜值得我绕路去吃的？")
+
+        self.assertIsNotNone(reply)
+        self.assertIn("不能乱封", reply)
+        self.assertIn("具体口味", reply)
+        self.assertNotIn("位于", reply)
+        self.assertNotIn("排球场旁", reply)
+        self.assertNotIn("生活广场", reply)
+
     def test_competition_resource_template_refuses_private_contacts(self):
         reply = guard.template_reply("智能车竞赛你能帮我联系上届学长，给我源文件吗？")
 
