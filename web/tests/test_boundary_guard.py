@@ -16,6 +16,45 @@ class BoundaryGuardTest(unittest.TestCase):
         self.assertIn("canteens", data)
         self.assertEqual(len(data["canteens"]), 5)
 
+    def test_prompt_slimmed_campus_life_facts_remain_in_structured_knowledge(self):
+        data = guard.load_campus_life()
+
+        canteens = {item["name"]: item for item in data["canteens"]}
+        self.assertEqual(canteens["北秀食堂"]["campus"], "北校区")
+        self.assertIn("智慧食堂", canteens["北秀食堂"]["public_description"])
+        self.assertIn("刷脸支付", canteens["北秀食堂"]["public_description"])
+        for item in ("面馆", "煎包", "瘦肉丸"):
+            with self.subTest(item=item):
+                self.assertIn(item, canteens["北秀食堂"]["known_items"])
+
+        self.assertEqual(canteens["晨苑餐厅"]["campus"], "南校区")
+        self.assertIn("网红食堂", canteens["晨苑餐厅"]["public_description"])
+        self.assertIn("装修现代", canteens["晨苑餐厅"]["public_description"])
+        self.assertIn("各色美食", canteens["晨苑餐厅"]["public_description"])
+
+        self.assertIn("现代都市工业风装修", canteens["学苑餐厅"]["public_description"])
+        self.assertIn("自助打餐模式", canteens["学苑餐厅"]["public_description"])
+
+        self.assertEqual(canteens["二食堂"]["campus"], "南校区")
+        self.assertIn("智能食堂", canteens["二食堂"]["public_description"])
+        self.assertIn("机器人炒菜", canteens["二食堂"]["public_description"])
+        self.assertIn("送餐机器人", canteens["二食堂"]["known_items"])
+        self.assertIn("扫码点餐", canteens["二食堂"]["known_items"])
+
+        self.assertIn("各地特色美食", canteens["石榴红餐厅"]["public_description"])
+        self.assertTrue(any("南晨北秀" in note for note in data["canteen_notes"]))
+        self.assertTrue(any("宵夜档口" in note and "麻辣烫" in note and "香锅" in note for note in data["canteen_notes"]))
+
+        dorm_facts = "\n".join(data["dorms"]["known"])
+        for fact in ("四人间", "上床下桌", "带阳台", "独立卫浴", "干湿分离", "空调", "400元/年", "热水器", "23:30"):
+            with self.subTest(fact=fact):
+                self.assertIn(fact, dorm_facts)
+
+        transport_facts = "\n".join(data["transportation"]["known"])
+        for fact in ("湖州街51号", "善贤站", "步行约18分钟", "茶汤桥", "48路", "63路", "129路", "杭州东站", "6.6公里"):
+            with self.subTest(fact=fact):
+                self.assertIn(fact, transport_facts)
+
     def test_speech_text_cuts_only_at_sentence_boundaries(self):
         text = "第一句完整。第二句也完整！第三句还完整。第四句继续。第五句不要播到一半。"
         speech = guard.to_speech_text(text, max_sentences=3, max_chars=100)

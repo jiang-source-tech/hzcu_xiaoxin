@@ -23,6 +23,8 @@
       "public_description": "智慧食堂，刷脸支付",
       "known_items": [
         "面馆",
+        "煎包",
+        "瘦肉丸",
         "西区商铺",
         "东区学校食堂",
         "麻辣香锅"
@@ -72,7 +74,10 @@
       "name": "二食堂",
       "campus": "南校区",
       "public_description": "智能食堂，机器人炒菜",
-      "known_items": [],
+      "known_items": [
+        "送餐机器人",
+        "扫码点餐"
+      ],
       "unknown": [
         "具体楼号",
         "楼层",
