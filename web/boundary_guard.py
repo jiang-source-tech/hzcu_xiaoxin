@@ -278,11 +278,27 @@ def contains_any(text: str, keywords: tuple[str, ...]) -> bool:
     return any(keyword in text for keyword in keywords)
 
 
+def is_action_commitment(text: str) -> bool:
+    if not text:
+        return False
+    has_commitment = contains_any(text, (
+        "我回头", "回头", "改天", "下次", "我先去", "先去", "去试试", "试试看",
+        "查查", "看看地图", "谢谢", "谢啦", "谢了", "好嘞", "懂了", "明白了",
+    ))
+    has_question = bool(re.search(r"[？?]", text)) or contains_any(text, (
+        "吗", "哪里", "在哪", "怎么", "能不能", "有没有", "为什么", "多少",
+    ))
+    return has_commitment and not has_question
+
+
 def classify_message(user_msg: str) -> str:
     text = user_msg or ""
 
     if contains_any(text, ("撑不住", "不想活", "想死", "自杀", "伤害自己", "活不下去")):
         return "crisis"
+
+    if is_action_commitment(text):
+        return "open_chat"
 
     admissions_context = contains_any(text, (
         "高三", "报考", "志愿", "录取概率", "分数线", "能不能上", "稳不稳", "稳吗",
@@ -294,11 +310,8 @@ def classify_message(user_msg: str) -> str:
     if contains_any(text, ("成绩", "查分", "绩点", "期末分", "考试分")):
         return "private_records"
 
-    notice_context = contains_any(text, (
-        "通知", "活动", "报名", "扫新", "招新", "在哪看", "哪里看", "哪里通知",
-        "公众号", "爱城院", "年级群", "班级群", "群里",
-    ))
-    notice_question = contains_any(text, ("哪里", "在哪", "看", "通知", "公众号", "群", "爱城院"))
+    notice_context = contains_any(text, ("通知", "报名", "扫新", "招新", "公众号", "年级群", "班级群", "群里"))
+    notice_question = contains_any(text, ("哪里", "在哪", "哪儿", "怎么", "谁通知", "看什么", "看哪个", "公众号还是", "群里会不会"))
     if notice_context and notice_question:
         return "notice_channels"
 

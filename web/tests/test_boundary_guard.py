@@ -93,6 +93,11 @@ class BoundaryGuardTest(unittest.TestCase):
         self.assertNotIn("排球场旁", reply)
         self.assertNotIn("生活广场", reply)
 
+    def test_action_commitment_does_not_trigger_notice_or_canteen_templates(self):
+        reply = guard.template_reply("好嘞，那我回头用爱城院查查地图，改天去北秀食堂试试看。谢谢小芯啦！")
+
+        self.assertIsNone(reply)
+
     def test_competition_resource_template_refuses_private_contacts(self):
         reply = guard.template_reply("智能车竞赛你能帮我联系上届学长，给我源文件吗？")
 
