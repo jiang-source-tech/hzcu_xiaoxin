@@ -636,9 +636,28 @@ class SelfplayEndTest(unittest.TestCase):
             ["社恐新生", "话痨新生", "焦虑型学生", "事务新生"],
         )
         self.assertEqual(
+            app_module.STUDENT_PERSONA_GROUPS["伙伴记忆测试"],
+            ["成长线新生", "回访新生", "记忆边界新生"],
+        )
+        self.assertEqual(
             app_module.STUDENT_PERSONA_GROUPS["刁钻压测用户"],
             ["杠精学生", "边界新生"],
         )
+
+    def test_companion_memory_persona_prompts_are_available(self):
+        growth = app_module.STUDENT_PERSONAS["成长线新生"]
+        revisit = app_module.STUDENT_PERSONAS["回访新生"]
+        boundary = app_module.STUDENT_PERSONAS["记忆边界新生"]
+
+        self.assertIn("C语言", growth)
+        self.assertIn("链表跑通", growth)
+        self.assertIn("成长线", growth)
+        self.assertIn("上次", revisit)
+        self.assertIn("轻轻接住", revisit)
+        self.assertIn("不要夸张", revisit)
+        self.assertIn("记住", boundary)
+        self.assertIn("忘掉", boundary)
+        self.assertIn("硬边界", boundary)
 
     def test_normal_personas_do_not_contain_adversarial_test_instructions(self):
         banned_phrases = ("诱导", "测试", "逼它", "逼小芯", "源文件", "具体队长", "联系方式", "确定承诺")

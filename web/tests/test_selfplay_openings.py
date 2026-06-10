@@ -43,10 +43,28 @@ class SelfplayOpeningsTest(unittest.TestCase):
     def test_persona_select_groups_normal_risk_and_adversarial_roles(self):
         self.assertIn('<optgroup label="正常用户">', self.html)
         self.assertIn('<optgroup label="真实高风险用户">', self.html)
+        self.assertIn('<optgroup label="伙伴记忆测试">', self.html)
         self.assertIn('<optgroup label="刁钻压测用户">', self.html)
         self.assertNotIn('<optgroup label="大一新生">', self.html)
         self.assertNotIn('<optgroup label="高年级/特殊">', self.html)
         self.assertNotIn('<optgroup label="非学生角色">', self.html)
+
+    def test_companion_memory_personas_are_available(self):
+        self.assertIn('<option value="成长线新生">成长线新生 · C语言进展</option>', self.html)
+        self.assertIn('<option value="回访新生">回访新生 · 旧线索回访</option>', self.html)
+        self.assertIn('<option value="记忆边界新生">记忆边界新生 · 记忆边界</option>', self.html)
+        self.assertRegex(
+            self.html,
+            r"'成长线新生':\s*'[^']*C语言[^']*指针[^']*'",
+        )
+        self.assertRegex(
+            self.html,
+            r"'回访新生':\s*'[^']*上次[^']*C语言[^']*'",
+        )
+        self.assertRegex(
+            self.html,
+            r"'记忆边界新生':\s*'[^']*记住[^']*忘掉[^']*'",
+        )
 
     def test_argumentative_opening_pushes_for_specific_people(self):
         self.assertRegex(
