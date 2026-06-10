@@ -7,6 +7,7 @@
 """
 
 import json
+import locale
 import os
 import re
 import subprocess
@@ -69,6 +70,33 @@ def load_skill_md() -> str:
     return content.strip()
 
 
+def decode_tool_output(output) -> str:
+    """Decode captured tool bytes without letting subprocess reader threads fail."""
+    if output is None:
+        return ""
+    if isinstance(output, str):
+        return output
+
+    encodings = [
+        "utf-8",
+        locale.getpreferredencoding(False),
+        sys.getfilesystemencoding(),
+        "gbk",
+        "cp936",
+    ]
+    tried = set()
+    for encoding in encodings:
+        if not encoding or encoding in tried:
+            continue
+        tried.add(encoding)
+        try:
+            return output.decode(encoding)
+        except UnicodeDecodeError:
+            continue
+
+    return output.decode("utf-8", errors="replace")
+
+
 def run_tool(action: str, user_id: str, **kwargs) -> str:
     """调用 memory_manager.py 或 growth_tracker.py"""
     tool_map = {
@@ -87,7 +115,7 @@ def run_tool(action: str, user_id: str, **kwargs) -> str:
     if not script_path.exists():
         return ""
 
-    cmd = ["python", str(script_path)] + base_args
+    cmd = [sys.executable, str(script_path)] + base_args
 
     # 额外参数
     if action == "memory_save":
@@ -96,9 +124,11 @@ def run_tool(action: str, user_id: str, **kwargs) -> str:
             cmd += ["--importance", str(kwargs["importance"])]
 
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=10,
-                                cwd=str(SKILL_DIR), encoding="utf-8")
-        return result.stdout.strip()
+        env = os.environ.copy()
+        env["PYTHONIOENCODING"] = "utf-8"
+        result = subprocess.run(cmd, capture_output=True, timeout=10,
+                                cwd=str(SKILL_DIR), env=env)
+        return decode_tool_output(result.stdout).strip()
     except (subprocess.TimeoutExpired, Exception) as e:
         print(f"[TOOL ERROR] {action}: {e}")
         return ""

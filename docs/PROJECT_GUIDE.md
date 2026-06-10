@@ -35,6 +35,7 @@ hzcu_ai_pet/
     ├── app.py
     ├── boundary_guard.py
     ├── relationship_state.py
+    ├── semantic_router.py
     ├── turn_analyzer.py
     ├── knowledge/
     │   ├── campus_life.json
@@ -52,6 +53,7 @@ hzcu_ai_pet/
 - `prompts/` 只保留 `memory_protocol.md` 和 `growth_protocol.md`。
 - 已删除拆分式 prompt 组件和 `tools/prompt_builder.py`。
 - 校园生活、学生事务、地点事实从 `web/knowledge/*.json` 读取。
+- `/api/chat` 和 `/test` 先经过语义路由，区分硬边界、知识库问答、自由聊天和消息话术整理。
 
 ## 3. 运行环境
 
@@ -84,13 +86,20 @@ EVAL_MAX_TOKENS=500
 浏览器 index.html
   -> POST /api/chat
   -> turn_analyzer.analyze()
-  -> guard.template_reply(user_msg)
-       命中高风险边界、食堂、校园地点、学生事务时直接返回
-  -> 未命中时 build_system_prompt(user_id)
+  -> semantic_router.route_message()
+       先做绝对硬边界兜底，再由路由器判断 reply_mode
+  -> hard_template
+       boundary_guard.template_reply(user_msg) 或 fallback_reply()
+       直接返回确定性短答
+  -> knowledge_grounded / free_chat
+       build_system_prompt(user_id)
        SKILL.md + 记忆 + 成长快照 + 关系状态 + 简短口语规则
+       build_route_instruction(user_msg, route)
+       根据本轮焦点注入知识库事实或自由聊天约束
   -> DeepSeek chat.completions.create()
   -> 后置验证
        截断/碎片检查
+       语义路由错配检查
        越界检测
        必要时 retry_instruction() 重试
        仍不通过则 fallback_reply()
@@ -101,9 +110,11 @@ EVAL_MAX_TOKENS=500
 关键点：
 
 - 当前没有 `safe_reply()`。
-- 前置确定性回复入口是 `boundary_guard.template_reply()`。
-- 事实型回复不让模型自由补写。
+- 前置意图判断入口是 `semantic_router.route_message()`。
+- `boundary_guard.template_reply()` 仍负责硬边界短答和知识库事实文本，但不再抢答所有含关键词消息。
+- 事实型回复只允许围绕结构化知识库事实自然表达，不让模型自由补写。
 - 开放陪伴聊天仍走 LLM，以保留自然度和人情味。
+- 用户只是感谢、行动确认或表达感受时，路由应保持 `free_chat`，避免输出食堂清单、通知渠道等模板。
 
 ## 5. System Prompt 组成
 
@@ -302,6 +313,8 @@ python -m unittest discover web/tests
 常用测试文件：
 
 - `test_boundary_guard.py`：知识库命中、模板短答、违规检测、TTS 裁剪。
+- `test_semantic_router.py`：语义路由 JSON 解析、硬边界优先级、自由聊天和知识库模式区分。
+- `test_run_tool_encoding.py`：Windows 子进程输出字节捕获和容错解码，避免工具输出触发后台 reader 线程编码异常。
 - `test_selfplay_end.py`：自对话接口、角色、结束判断、fallback。
 - `test_selfplay_openings.py`：测试页角色和开场白。
 - `test_skill_boundaries.py`：`SKILL.md` 边界、prompt 两文件结构。

@@ -15,18 +15,23 @@
 
 ```text
 用户消息
-  -> boundary_guard.template_reply()
-       高风险问题、食堂、学生事务、校园地点等可确定场景直接短答
-  -> 未命中时调用 LLM
+  -> semantic_router.route_message()
+       hard_template / knowledge_grounded / free_chat
+  -> hard_template
+       boundary_guard.template_reply() 直接短答或兜底
+  -> knowledge_grounded / free_chat
        build_system_prompt() = SKILL.md + 记忆 + 成长快照 + 关系状态
+       build_route_instruction() 注入本轮语义路由约束
+       调用 LLM 生成自然回复
   -> 后置检查
-       清理思考标记、检查半截回复、检查越界表达、必要时重试或兜底
+       清理思考标记、检查半截回复、检查路由错配、检查越界表达、必要时重试或兜底
   -> 返回 reply / speech / expression
 ```
 
 这个版本的重点是平衡“人情味”和“少幻觉”：
 
 - 开放陪伴聊天交给模型自然生成。
+- 语义路由先判断用户真实意图，避免把感谢、行动确认、情绪表达误打成知识库模板。
 - 事实型校园信息只从本地知识库读。
 - 知识库没写明的楼号、楼层、窗口、价格、营业时间、联系方式，不让模型补。
 - 模型回复后仍做越界检测，防止承诺代办、编造经历、预测录取、假设线下在场。
@@ -65,6 +70,8 @@ python -m unittest discover web/tests
 - 学生事务和校园地点优先从结构化知识库短答。
 - `/test` 角色包含行政事务角色“事务新生”。
 - 新生继续追问时不会被误判为结束对话。
+- 语义路由能区分硬边界、知识库问答、自由聊天和消息话术整理。
+- Windows 下记忆/成长工具的子进程输出按字节捕获并容错解码，避免后台 `_readerthread` 编码异常。
 - 小芯不能编造联系方式、竞赛资源、真实学生经历、食堂口味排行、录取概率等。
 
 ## 项目结构
@@ -88,6 +95,7 @@ hzcu_ai_pet/
     ├── app.py                      # Flask 后端、LLM 调用、会话、自对话测试
     ├── boundary_guard.py           # 确定性短答、知识库命中、越界检测、TTS 裁剪
     ├── relationship_state.py       # 关系状态和轻量问候
+    ├── semantic_router.py          # 本轮意图、焦点和回复模式路由
     ├── turn_analyzer.py            # 用户消息分析
     ├── knowledge/
     │   ├── campus_life.json        # 食堂、宿舍、交通、快递等校园生活知识
