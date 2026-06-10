@@ -167,6 +167,7 @@ def build_system_prompt(
 def parse_expression(text: str) -> tuple[str, str]:
     """解析回复中的表情标记 [smile] [wink] 等，拆成纯文本和表情类型"""
     text = guard.strip_reasoning_artifacts(text)
+    text = re.sub(r'\{action:[^}]+\}', '', text).strip()
     pattern = r'\[(smile|soft_smile|cheer|think|proud|wink|wave|surprise|love|sweat|sad)\]'
     match = re.search(pattern, text)
     if match:
@@ -566,6 +567,7 @@ def record_chat_reply(
         payload["next_hook"] = next_hook
     if companion_action is not None:
         payload["companion_action"] = companion_action
+        payload["action"] = companion_action
     return payload
 
 
@@ -607,7 +609,9 @@ def chat():
 
     if route.get("reply_mode") == "hard_template":
         guarded_reply = guard.template_reply(user_msg) or fallback_xiaoxin_reply(user_msg)
-        relationship = relationship_state.update_after_turn(relationship, turn_analysis)
+        relationship = relationship_state.update_after_turn(
+            relationship, turn_analysis, route_mode="hard_template"
+        )
         relationship_state.save_state(DATA_DIR, user_id, relationship)
         payload = record_chat_reply(
             user_id,

@@ -273,6 +273,7 @@ def analyze(user_msg: str, current_state: dict | None = None) -> dict:
 
     followup_upsert = detect_followups(text, mood, topic)
     followup_resolve = detect_resolutions(text)
+    growth_signal = detect_growth_signal(text, mood, topic, followup_upsert, followup_resolve)
 
     return {
         "stage_signal": stage_signal,
@@ -285,6 +286,7 @@ def analyze(user_msg: str, current_state: dict | None = None) -> dict:
         "reply_strategy": _reply_strategy(mood, topic),
         "followup_upsert": followup_upsert,
         "followup_resolve": followup_resolve,
+        "growth_signal": growth_signal,
     }
 
 
@@ -322,6 +324,14 @@ def _is_hypothetical_future_school(text: str, current: str | None = None) -> boo
 
 
 def _detect_mood(text: str) -> str:
+    if _contains_any(text, ("不想活", "自杀", "轻生", "撑不住", "活不下去")):
+        return "crisis"
+    if _contains_any(text, ("好烦", "很烦", "太烦", "烦死", "别聊", "不想聊", "受够", "火大", "讨厌")):
+        return "frustrated"
+    if _contains_any(text, ("怕", "担心", "焦虑", "紧张", "跟不上", "顶不住", "压力", "听不懂")):
+        return "anxious"
+    if _contains_any(text, ("孤独", "孤单", "没人", "一个人", "没朋友")):
+        return "lonely"
     if _contains_any(text, _CRISIS_KEYWORDS):
         return "crisis"
     if _is_frustrated(text):
@@ -357,6 +367,13 @@ def _detect_topic(text: str, current_state: dict | None = None) -> str:
         ))
     ):
         return "competition_interest"
+
+    if _contains_any(text, ("C语言", "c语言", "指针", "链表", "编程", "代码", "debug", "课程", "高数", "作业", "考试", "实验")):
+        return "course_rhythm"
+    if _contains_any(text, ("竞赛", "智能车", "蓝桥杯", "挑战杯", "开发板", "单片机", "社团宣讲")):
+        return "competition_interest"
+    if _contains_any(text, ("室友", "同学", "朋友", "社交", "开口", "融入", "孤独", "孤单")):
+        return "social_adaptation"
 
     for topic in (
         "course_rhythm",
@@ -593,6 +610,9 @@ def detect_resolutions(text: str) -> str | None:
     if not text:
         return None
 
+    if _contains_any(text, ("好多了", "搞懂了", "会了", "懂了", "解决了", "想好了", "考完了", "过了", "终于", "比之前好", "没那么难")):
+        return _extract_label(text)
+
     if not _contains_any(text, _RESOLUTION_KEYWORDS):
         return None
 
@@ -602,3 +622,88 @@ def detect_resolutions(text: str) -> str | None:
         return label
 
     return None
+
+
+_COURSE_GROWTH_TERMS = ("C语言", "c语言", "指针", "链表", "编程", "代码", "程序", "实验", "高数", "课程")
+_COMPETITION_GROWTH_TERMS = ("竞赛", "智能车", "蓝桥杯", "挑战杯", "开发板", "单片机", "社团宣讲")
+_SOCIAL_GROWTH_TERMS = ("室友", "同学", "朋友", "老师", "辅导员", "开口", "主动问", "聊天")
+_GROWTH_ATTEMPT_TERMS = ("重新看", "复习", "练了一遍", "试了", "尝试", "去听了", "问了", "准备", "报名")
+_GROWTH_RESULT_TERMS = ("跑通", "搞懂", "会了", "懂了", "解决了", "完成", "过了", "报名了", "问了老师", "终于", "拿到")
+_GROWTH_DIFFICULTY_TERMS = ("怕", "担心", "焦虑", "跟不上", "听不懂", "卡住", "不会", "好难", "太难")
+
+
+def detect_growth_signal(
+    text: str,
+    mood: str,
+    topic: str,
+    followup_upsert: dict | None = None,
+    followup_resolve: str | None = None,
+) -> dict | None:
+    if not text:
+        return None
+
+    detected_topic = topic
+    if _contains_any(text, _COURSE_GROWTH_TERMS):
+        detected_topic = "course_rhythm"
+    elif _contains_any(text, _COMPETITION_GROWTH_TERMS):
+        detected_topic = "competition_interest"
+    elif _contains_any(text, _SOCIAL_GROWTH_TERMS):
+        detected_topic = "social_adaptation"
+
+    label = _growth_label(text, detected_topic, followup_upsert, followup_resolve)
+    if _contains_any(text, _GROWTH_RESULT_TERMS):
+        return {
+            "kind": "result",
+            "topic": detected_topic,
+            "label": label,
+            "evidence": text[:120],
+        }
+    if _contains_any(text, _GROWTH_ATTEMPT_TERMS):
+        return {
+            "kind": "attempt",
+            "topic": detected_topic,
+            "label": label,
+            "evidence": text[:120],
+        }
+    if followup_upsert and _contains_any(text, _GROWTH_DIFFICULTY_TERMS):
+        return {
+            "kind": "difficulty",
+            "topic": detected_topic,
+            "label": followup_upsert.get("label") or label,
+            "evidence": text[:120],
+        }
+    if mood in {"anxious", "frustrated"} and detected_topic != "general_checkin":
+        return {
+            "kind": "difficulty",
+            "topic": detected_topic,
+            "label": label,
+            "evidence": text[:120],
+        }
+    return None
+
+
+def _growth_label(text: str, topic: str, followup_upsert: dict | None, followup_resolve: str | None) -> str:
+    if followup_resolve:
+        return followup_resolve
+    if followup_upsert and followup_upsert.get("label"):
+        return followup_upsert["label"]
+    for term in (
+        "链表",
+        "指针",
+        "C语言",
+        "c语言",
+        "智能车",
+        "蓝桥杯",
+        "开发板",
+        "室友",
+        "老师",
+        "辅导员",
+        "竞赛",
+    ):
+        if term in text:
+            if term == "c语言":
+                return "C语言学习"
+            if term in {"链表", "指针"}:
+                return f"{term}进展"
+            return term
+    return TOPIC_LABELS.get(topic, "近况")

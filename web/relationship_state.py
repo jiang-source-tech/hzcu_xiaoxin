@@ -36,6 +36,19 @@ _MAX_ACTIVE_FOLLOWUPS = 8
 _MAX_FOLLOWUP_AGE_DAYS = 60  # 超过 60 天自动 archive
 
 
+PET_STATE_DEFAULTS = {
+    "mood": "calm",
+    "energy": 70,
+    "bond": 0,
+    "relationship_stage": "first_meet",
+    "presence_mode": "idle",
+    "last_seen_at": None,
+}
+
+_PET_MOODS = {"calm", "happy", "worried", "sleepy", "excited", "lonely_light"}
+_PRESENCE_MODES = {"idle", "listening", "caring", "celebrating", "resting", "reunion"}
+
+
 def default_state() -> dict[str, Any]:
     return {
         "user_stage": "prospective",
@@ -46,9 +59,63 @@ def default_state() -> dict[str, Any]:
         "growth_intent": "",
         "next_hook": None,
         "followups": [],
+        "growth_timeline": [],
+        "pet_state": copy.deepcopy(PET_STATE_DEFAULTS),
         "last_active_at": None,
         "last_greeting_date": None,
     }
+
+
+def _relationship_stage_for(bond: int, growth_count: int, active_followup_count: int) -> str:
+    if bond >= 60 and growth_count >= 3:
+        return "old_friend"
+    if bond >= 28 or growth_count >= 2:
+        return "companion"
+    if bond >= 8 or active_followup_count > 0 or growth_count >= 1:
+        return "familiar"
+    return "first_meet"
+
+
+def normalize_pet_state(pet_state: dict[str, Any] | None, state: dict[str, Any] | None = None) -> dict[str, Any]:
+    normalized = copy.deepcopy(PET_STATE_DEFAULTS)
+    if isinstance(pet_state, dict):
+        normalized.update({k: v for k, v in pet_state.items() if k in normalized})
+
+    if normalized["mood"] not in _PET_MOODS:
+        normalized["mood"] = "calm"
+    if normalized["presence_mode"] not in _PRESENCE_MODES:
+        normalized["presence_mode"] = "idle"
+
+    try:
+        normalized["energy"] = max(0, min(100, int(normalized.get("energy", 70))))
+    except (TypeError, ValueError):
+        normalized["energy"] = 70
+    try:
+        normalized["bond"] = max(0, min(100, int(normalized.get("bond", 0))))
+    except (TypeError, ValueError):
+        normalized["bond"] = 0
+
+    growth_count = 0
+    active_followup_count = 0
+    if isinstance(state, dict):
+        growth_count = len(state.get("growth_timeline") or [])
+        active_followup_count = len([f for f in state.get("followups", []) if f.get("status") == "active"])
+    normalized["relationship_stage"] = _relationship_stage_for(
+        normalized["bond"], growth_count, active_followup_count
+    )
+    return normalized
+
+
+def normalize_state(state: dict[str, Any] | None) -> dict[str, Any]:
+    normalized = copy.deepcopy(default_state())
+    if isinstance(state, dict):
+        normalized.update(copy.deepcopy(state))
+    if not isinstance(normalized.get("followups"), list):
+        normalized["followups"] = []
+    if not isinstance(normalized.get("growth_timeline"), list):
+        normalized["growth_timeline"] = []
+    normalized["pet_state"] = normalize_pet_state(normalized.get("pet_state"), normalized)
+    return normalized
 
 
 def _state_file(data_dir: Path, user_id: str) -> Path:
@@ -64,12 +131,7 @@ def load_state(data_dir: Path, user_id: str) -> dict[str, Any]:
             saved = json.load(f)
     except (OSError, json.JSONDecodeError):
         return default_state()
-    state = default_state()
-    state.update(saved)
-    # migration: ensure followups field exists
-    if "followups" not in state:
-        state["followups"] = []
-    return state
+    return normalize_state(saved)
 
 
 def save_state(data_dir: Path, user_id: str, state: dict[str, Any]) -> None:
@@ -84,16 +146,28 @@ def growth_profile_for_stage(user_stage: str) -> str:
 
 
 def public_state(state: dict[str, Any]) -> dict[str, Any]:
+    state = normalize_state(state)
     return {
         "user_stage": state.get("user_stage", "prospective"),
         "recent_mood": state.get("recent_mood", "unknown"),
         "recent_topic": state.get("recent_topic", "general_checkin"),
         "relationship_level": state.get("relationship_level", 1),
         "active_followups": len([f for f in state.get("followups", []) if f.get("status") == "active"]),
+        "pet_state": state.get("pet_state", copy.deepcopy(PET_STATE_DEFAULTS)),
+        "growth_count": len(state.get("growth_timeline", [])),
     }
 
 
 def companion_action(state: dict[str, Any], kind: str = "listen") -> dict[str, Any]:
+    state = normalize_state(state)
+    pet_state = state.get("pet_state", {})
+    mode = pet_state.get("presence_mode")
+    if mode == "celebrating":
+        return {"kind": "celebrate", "intensity": 0.55}
+    if mode == "caring":
+        return {"kind": "lean_in", "intensity": 0.45}
+    if mode == "reunion":
+        return {"kind": "idle_wave", "intensity": 0.35}
     mood = state.get("recent_mood", "unknown")
     intensity = 0.4 if mood in {"anxious", "frustrated", "lonely"} else 0.25
     return {"kind": kind, "intensity": intensity}
@@ -215,6 +289,95 @@ def _archive_followups_for_topic(state: dict[str, Any], topic: str | None, now: 
         state["followups"] = followups
 
 
+def _growth_id(signal: dict[str, Any]) -> str:
+    topic = signal.get("topic", "general_checkin")
+    kind = signal.get("kind", "progress")
+    label = signal.get("label", "")
+    digest = hashlib.md5(f"{topic}:{kind}:{label}".encode()).hexdigest()[:8]
+    return f"gr_{digest}"
+
+
+def _append_growth_signal(state: dict[str, Any], signal: dict[str, Any], now: datetime) -> bool:
+    if not isinstance(signal, dict):
+        return False
+    kind = signal.get("kind")
+    if kind not in {"attempt", "result"}:
+        return False
+
+    timeline = state.get("growth_timeline", [])
+    item_id = _growth_id(signal)
+    if any(item.get("id") == item_id for item in timeline):
+        return False
+
+    timeline.append({
+        "id": item_id,
+        "kind": kind,
+        "topic": signal.get("topic", "general_checkin"),
+        "label": signal.get("label", ""),
+        "evidence": signal.get("evidence", "")[:120],
+        "created_at": now.isoformat(),
+    })
+    state["growth_timeline"] = timeline[-50:]
+    return True
+
+
+def _resolve_active_followups_for_topic(state: dict[str, Any], topic: str | None, now: datetime) -> None:
+    if not topic:
+        return
+    for fw in state.get("followups", []):
+        if fw.get("status") == "active" and fw.get("topic") == topic:
+            fw["status"] = "resolved"
+            fw["resolved_at"] = now.isoformat()
+
+
+def _pet_mood_for_turn(user_mood: str, growth_signal: dict[str, Any] | None) -> str:
+    if isinstance(growth_signal, dict) and growth_signal.get("kind") == "result":
+        return "excited"
+    if user_mood in {"anxious", "frustrated", "crisis"}:
+        return "worried"
+    if user_mood == "lonely":
+        return "lonely_light"
+    if user_mood == "curious":
+        return "happy"
+    return "calm"
+
+
+def _presence_for_turn(user_mood: str, growth_signal: dict[str, Any] | None) -> str:
+    if isinstance(growth_signal, dict) and growth_signal.get("kind") == "result":
+        return "celebrating"
+    if user_mood in {"anxious", "frustrated", "lonely", "crisis"}:
+        return "caring"
+    return "listening"
+
+
+def _update_pet_state_after_turn(
+    state: dict[str, Any],
+    analysis: dict[str, Any],
+    now: datetime,
+    *,
+    meaningful: bool,
+) -> None:
+    pet_state = normalize_pet_state(state.get("pet_state"), state)
+    signal = analysis.get("growth_signal")
+    user_mood = analysis.get("mood", "unknown")
+    pet_state["last_seen_at"] = now.isoformat()
+    pet_state["mood"] = _pet_mood_for_turn(user_mood, signal if meaningful else None)
+    pet_state["presence_mode"] = _presence_for_turn(user_mood, signal if meaningful else None)
+    pet_state["energy"] = max(20, min(100, pet_state.get("energy", 70) - 1))
+
+    if meaningful:
+        delta = 0
+        if isinstance(signal, dict) and signal.get("kind") == "result":
+            delta = 5
+        elif isinstance(signal, dict) and signal.get("kind") == "attempt":
+            delta = 3
+        elif analysis.get("followup_upsert") or analysis.get("memory_worthy"):
+            delta = 1
+        pet_state["bond"] = max(0, min(100, pet_state.get("bond", 0) + delta))
+
+    state["pet_state"] = normalize_pet_state(pet_state, state)
+
+
 def followups_prompt(state: dict[str, Any]) -> str:
     """将活跃 followups 转换为关心的 prompt 片段。"""
     _archive_stale_followups(state)
@@ -298,12 +461,10 @@ def update_after_turn(
     state: dict[str, Any],
     analysis: dict[str, Any],
     now: datetime | None = None,
+    route_mode: str | None = None,
 ) -> dict[str, Any]:
     now = now or datetime.now(timezone.utc)
-    updated = copy.deepcopy(default_state())
-    updated.update(copy.deepcopy(state or {}))
-    if "followups" not in updated:
-        updated["followups"] = []
+    updated = normalize_state(state)
 
     stage_signal = analysis.get("stage_signal")
     if stage_signal in PRE_GROWTH_STAGE_MAP:
@@ -312,6 +473,10 @@ def update_after_turn(
     updated["recent_mood"] = analysis.get("mood") or updated["recent_mood"]
     updated["recent_topic"] = analysis.get("topic") or updated["recent_topic"]
     updated["last_active_at"] = now.isoformat()
+
+    if route_mode == "hard_template":
+        _update_pet_state_after_turn(updated, analysis, now, meaningful=False)
+        return normalize_state(updated)
 
     if analysis.get("memory_worthy") and analysis.get("memory_content"):
         if analysis.get("memory_type") == "concern":
@@ -348,20 +513,35 @@ def update_after_turn(
     if followup_resolve:
         resolve_followup(updated, followup_resolve)
 
+    growth_signal = analysis.get("growth_signal")
+    added_growth = _append_growth_signal(updated, growth_signal, now)
+    if added_growth and growth_signal.get("kind") == "result":
+        _resolve_active_followups_for_topic(updated, growth_signal.get("topic"), now)
+
+    _update_pet_state_after_turn(
+        updated,
+        analysis,
+        now,
+        meaningful=bool(added_growth or followup_upsert or analysis.get("memory_worthy")),
+    )
+
     # ── Sync next_hook ──
     _sync_next_hook_from_followups(updated)
 
-    return updated
+    return normalize_state(updated)
 
 
 # ─── Prompt ─────────────────────────────────────────────────────────────
 
 
 def prompt_summary(state: dict[str, Any], analysis: dict[str, Any] | None = None) -> str:
+    state = normalize_state(state)
     stage = growth_profile_for_stage(state.get("user_stage", "prospective"))
     mood = state.get("recent_mood", "unknown")
     topic = state.get("recent_topic", "general_checkin")
     hook = state.get("next_hook") or {}
+    pet_state = state.get("pet_state", {})
+    timeline = state.get("growth_timeline", [])
     lines = [
         "【关系状态】",
         f"- 用户阶段：{stage}",
@@ -374,6 +554,29 @@ def prompt_summary(state: dict[str, Any], analysis: dict[str, Any] | None = None
         lines.append(f'- 可轻接的话题：{hook.get("label", "")}。只说"你之前提过/聊到过"，不要表现得一直惦记。')
     if analysis and analysis.get("reply_strategy"):
         lines.append(f"- 本轮策略：{analysis['reply_strategy']}")
+
+    lines.extend([
+        "",
+        "【伙伴状态】",
+        f"- 小芯状态：mood={pet_state.get('mood')}, energy={pet_state.get('energy')}, bond={pet_state.get('bond')}, stage={pet_state.get('relationship_stage')}, presence={pet_state.get('presence_mode')}",
+        "- 这些状态只用于调整语气和动作，不要像报数值一样说给用户听。",
+        "【可轻触线索】",
+    ])
+    if hook.get("active"):
+        lines.append(f"- 当前可轻触：{hook.get('label', '')}。只在自然相关时提一句。")
+    if timeline:
+        last = timeline[-1]
+        lines.append(f"- 最近成长：{last.get('label', '')}。可以用见证式语气轻轻承接。")
+    if analysis and analysis.get("growth_signal"):
+        signal = analysis["growth_signal"]
+        lines.append(f"- 本轮成长信号：{signal.get('kind')} / {signal.get('label')}。")
+    lines.extend([
+        "- 没有自然入口时，不要硬提旧线索。",
+        "【结构化输出约束】",
+        "- reply 可以带一个表情标记，如 [smile] 或 [proud]。",
+        "- speech 必须是干净可朗读文本，不要包含 JSON、状态值、表情标签或 action 字段。",
+        "- action 是给开发板屏幕/动作系统的结构化字段，不要把动作旁白写进用户会听到的话里。",
+    ])
 
     # 关心线索
     fw_prompt = followups_prompt(state)

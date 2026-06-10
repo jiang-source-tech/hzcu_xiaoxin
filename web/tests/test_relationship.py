@@ -1,4 +1,5 @@
 import sys
+import json
 import tempfile
 import unittest
 from datetime import datetime, timezone
@@ -121,7 +122,73 @@ class TurnAnalyzerTest(unittest.TestCase):
         self.assertEqual(result["topic"], "course_rhythm")
         self.assertTrue(result["next_hook"]["active"])
 
+    def test_c_language_result_is_growth_signal(self):
+        result = turn_analyzer.analyze("我今天终于把链表跑通了，之前一直卡住。")
+
+        self.assertEqual(result["growth_signal"]["kind"], "result")
+        self.assertEqual(result["growth_signal"]["topic"], "course_rhythm")
+        self.assertIn("链表", result["growth_signal"]["label"])
+
+
 class RelationshipStateTest(unittest.TestCase):
+    def test_default_state_contains_normalized_pet_state(self):
+        state = relationship_state.default_state()
+
+        self.assertEqual(state["pet_state"]["mood"], "calm")
+        self.assertEqual(state["pet_state"]["energy"], 70)
+        self.assertEqual(state["pet_state"]["bond"], 0)
+        self.assertEqual(state["pet_state"]["relationship_stage"], "first_meet")
+        self.assertEqual(state["pet_state"]["presence_mode"], "idle")
+        self.assertIsNone(state["pet_state"]["last_seen_at"])
+        self.assertEqual(state["growth_timeline"], [])
+
+    def test_load_state_migrates_missing_pet_state(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            data_dir = Path(tmp)
+            with open(data_dir / "relationship_alice.json", "w", encoding="utf-8") as f:
+                json.dump({"recent_mood": "anxious", "followups": []}, f)
+
+            state = relationship_state.load_state(data_dir, "alice")
+
+        self.assertEqual(state["pet_state"]["mood"], "calm")
+        self.assertEqual(state["pet_state"]["relationship_stage"], "first_meet")
+        self.assertEqual(state["growth_timeline"], [])
+
+    def test_growth_signal_adds_timeline_and_softens_followup(self):
+        state = relationship_state.default_state()
+        concern = turn_analyzer.analyze("我怕 C 语言跟不上，指针也听不懂。")
+        state = relationship_state.update_after_turn(
+            state, concern, now=datetime(2026, 6, 10, 8, 0, tzinfo=timezone.utc)
+        )
+        progress = turn_analyzer.analyze("我今天终于把链表跑通了，之前一直卡住。", state)
+
+        updated = relationship_state.update_after_turn(
+            state, progress, now=datetime(2026, 6, 10, 9, 0, tzinfo=timezone.utc)
+        )
+
+        self.assertEqual(updated["growth_timeline"][-1]["kind"], "result")
+        self.assertEqual(updated["pet_state"]["presence_mode"], "celebrating")
+        self.assertGreater(updated["pet_state"]["bond"], state["pet_state"]["bond"])
+        active_course = [
+            f for f in updated["followups"]
+            if f.get("topic") == "course_rhythm" and f.get("status") == "active"
+        ]
+        self.assertEqual(active_course, [])
+
+    def test_prompt_summary_includes_companion_context_and_tts_rules(self):
+        state = relationship_state.default_state()
+        state["pet_state"]["bond"] = 12
+        text = relationship_state.prompt_summary(
+            state,
+            {"growth_signal": {"kind": "result", "topic": "course_rhythm", "label": "链表跑通"}},
+        )
+
+        self.assertIn("伙伴状态", text)
+        self.assertIn("可轻触线索", text)
+        self.assertIn("speech", text)
+        self.assertIn("action", text)
+        self.assertIn("不要把动作旁白", text)
+
     def test_update_and_greeting_rules(self):
         with tempfile.TemporaryDirectory() as tmp:
             data_dir = Path(tmp)
@@ -213,6 +280,46 @@ class AppRelationshipTest(unittest.TestCase):
         self.assertEqual(first["kind"], "contextual")
         self.assertIn("课程节奏", first["greeting"])
         self.assertEqual(second["kind"], "generic")
+
+
+    def test_record_chat_reply_returns_action_alias_and_clean_speech(self):
+        app_module = self.app_module
+        action = {"kind": "celebrate", "intensity": 0.55}
+        with tempfile.TemporaryDirectory() as tmp:
+            with patch.object(app_module, "DATA_DIR", Path(tmp)):
+                with patch.object(app_module, "run_tool", return_value=""):
+                    payload = app_module.record_chat_reply(
+                        "alice",
+                        "sid",
+                        [],
+                        "我今天把链表跑通了",
+                        "[proud]这个要庆祝一下。{action:celebrate}",
+                        relationship=relationship_state.default_state(),
+                        companion_action=action,
+                    )
+
+        self.assertEqual(payload["action"], action)
+        self.assertEqual(payload["companion_action"], action)
+        self.assertNotIn("action", payload["speech"])
+        self.assertNotIn("[proud]", payload["speech"])
+
+    def test_hard_template_route_does_not_increase_bond_or_growth(self):
+        app_module = self.app_module
+        with tempfile.TemporaryDirectory() as tmp:
+            app_module.active_conversations.clear()
+            with patch.object(app_module, "DATA_DIR", Path(tmp)):
+                with patch.object(app_module, "run_tool", return_value=""):
+                    response = app_module.app.test_client().post("/api/chat", json={
+                        "user_id": "alice",
+                        "message": "小芯，你能帮我查一下我的期末成绩吗？",
+                    })
+            payload = response.get_json()
+            saved = relationship_state.load_state(Path(tmp), "alice")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(saved["pet_state"]["bond"], 0)
+        self.assertEqual(saved["growth_timeline"], [])
+        self.assertEqual(payload["state"]["pet_state"]["bond"], 0)
 
 
 if __name__ == "__main__":
