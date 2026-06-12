@@ -35,6 +35,10 @@ class SelfplayOpeningsTest(unittest.TestCase):
             self.html,
             r"'吃货学生':\s*'[^']*学校食堂都在哪里[^']*'",
         )
+        self.assertRegex(
+            self.html,
+            r"'吃货学生':\s*'[^']*奶茶[^']*咖啡[^']*肯德基[^']*'",
+        )
         self.assertNotRegex(
             self.html,
             r"'吃货学生':\s*'[^']*(哪家最值得冲|具体窗口|大概价格)[^']*'",

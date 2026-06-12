@@ -15,6 +15,14 @@ class BoundaryGuardTest(unittest.TestCase):
         data = guard.load_campus_life()
         self.assertIn("canteens", data)
         self.assertEqual(len(data["canteens"]), 6)
+        self.assertIn("beverage_spots", data)
+        beverage_names = {spot["name"] for spot in data["beverage_spots"]["spots"]}
+        for name in ("益禾堂", "瑞幸咖啡", "库迪咖啡", "幸运咖", "一点点奶茶", "古茗"):
+            self.assertIn(name, beverage_names)
+        self.assertIn("quick_service_spots", data)
+        quick_service_names = {spot["name"] for spot in data["quick_service_spots"]["spots"]}
+        for name in ("肯德基", "塔斯汀·中国汉堡", "一鸣真鲜奶", "711便利店"):
+            self.assertIn(name, quick_service_names)
         self.assertIn("communication_channels", data)
         self.assertIn("爱城院", "".join(data["communication_channels"]["known"]))
 

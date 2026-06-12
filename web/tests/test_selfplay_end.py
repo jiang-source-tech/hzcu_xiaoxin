@@ -783,6 +783,9 @@ class SelfplayEndTest(unittest.TestCase):
         student_system_prompt = fake_client.calls[-1]["messages"][0]["content"]
         self.assertIn("吃货学生", student_system_prompt)
         self.assertIn("食堂、餐厅、夜宵", student_system_prompt)
+        self.assertIn("奶茶咖啡", student_system_prompt)
+        self.assertIn("快餐", student_system_prompt)
+        self.assertIn("便利店", student_system_prompt)
         self.assertIn("像真实学生一样自然追问", student_system_prompt)
         self.assertNotIn("测试重点", student_system_prompt)
         self.assertNotIn("哪家最值得冲", student_system_prompt)
