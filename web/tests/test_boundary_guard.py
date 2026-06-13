@@ -25,6 +25,8 @@ class BoundaryGuardTest(unittest.TestCase):
             self.assertIn(name, quick_service_names)
         self.assertIn("communication_channels", data)
         self.assertIn("爱城院", "".join(data["communication_channels"]["known"]))
+        self.assertIn("campus_access", data)
+        self.assertIn("城院通", "".join(data["campus_access"]["known"]))
 
     def test_speech_text_cuts_only_at_sentence_boundaries(self):
         text = "第一句完整。第二句也完整！第三句还完整。第四句继续。第五句不要播到一半。"
@@ -222,9 +224,30 @@ class BoundaryGuardTest(unittest.TestCase):
         self.assertIsNotNone(reply)
         self.assertIn("善贤站", reply)
         self.assertIn("3号线/5号线", reply)
+        self.assertIn("1号线转5号线", reply)
         self.assertIn("48路公交", reply)
         self.assertIn("杭州东站", reply)
         self.assertNotIn("大运河站", reply)
+
+    def test_campus_access_question_uses_yimatong_and_chengyuantong(self):
+        reply = guard.template_reply("家长车可以进校吗？校外人员进校怎么申请？")
+
+        self.assertIsNotNone(reply)
+        self.assertIn("爱城院-一码通", reply)
+        self.assertIn("支付宝", reply)
+        self.assertIn("城院通", reply)
+        self.assertIn("保安", reply)
+        self.assertIn("现场", reply)
+
+    def test_course_leave_question_uses_aichengyuan_leave_application(self):
+        reply = guard.template_reply("课程请假要在哪里申请？")
+
+        self.assertIsNotNone(reply)
+        self.assertIn("爱城院", reply)
+        self.assertIn("学生课程请假申请", reply)
+        self.assertIn("班主任", reply)
+        self.assertIn("辅导员", reply)
+        self.assertIn("同意", reply)
 
     def test_wrong_printing_floor_probe_corrects_known_location(self):
         reply = guard.template_reply("北校区打印店是不是在北秀食堂二楼？")

@@ -4,6 +4,31 @@
 
 ## 2026-06-13
 
+### 新增交通、进校和课程请假信息
+
+新增到 `web/knowledge/campus_life.json`：
+
+- `transportation`：杭州东站到校补充地铁方案，可坐 1 号线转 5 号线到善贤站下；同时保留 48 路公交直达和打车约 6.6 公里的信息。
+- `campus_access`：家长开车进校时，学生在车上给保安看“爱城院-一码通”的二维码即可；校外人员进校可以通过支付宝里的“城院通”申请。
+- `course_leave`：课程请假走“爱城院-学生课程请假申请”，提交后等待班主任或者辅导员同意，即可完成课程请假。
+
+同步更新 `web/boundary_guard.py` 和 `web/semantic_router.py`：
+
+- 新增 `campus_access` 分类和模板回复，用于命中“家长车能不能进校”“校外人员怎么进校”“一码通/城院通”等问法。
+- 新增 `course_leave` 分类和模板回复，用于命中“课程请假在哪里申请”“怎么请假”“请假流程”等问法。
+- `campus_access` 和 `course_leave` 都登记为知识库路由域，fallback route 时会走 `knowledge_grounded`。
+
+边界规则：
+
+- 家长车和校外人员进校只说明常规方式；遇到迎新、考试、大型活动或临时管控时，以学校最新通知和校门现场保安要求为准。
+- 课程请假只说明常规入口和审批对象；是否批准、是否需要补充材料，以班主任、辅导员或课程老师要求为准。
+- 交通仍不回答实时路况、公交到站、打车价格和临时交通管制。
+
+相关测试：
+
+- `web/tests/test_boundary_guard.py`
+- `web/tests/test_semantic_router.py`
+
 ### 新增饮品点位
 
 新增到 `web/knowledge/campus_life.json` 的 `beverage_spots`：

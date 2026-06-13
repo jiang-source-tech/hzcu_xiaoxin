@@ -31,6 +31,8 @@ KNOWLEDGE_CATEGORIES = {
     "official_process": ["official_process", "notice_channels"],
     "delivery_locations": ["delivery"],
     "transportation": ["transportation"],
+    "campus_access": ["campus_access"],
+    "course_leave": ["course_leave"],
 }
 
 

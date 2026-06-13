@@ -368,6 +368,28 @@ def format_transportation_reply() -> str:
     )
 
 
+def format_campus_access_reply() -> str:
+    access = load_campus_life().get("campus_access", {})
+    known = access.get("known") or []
+    if not known:
+        return "进校规则我这里没有可靠信息，建议以学校最新通知和校门现场要求为准。[think]"
+    return (
+        f"进校这块我记的是：{'；'.join(known)}。"
+        "如果遇到迎新、考试、大型活动或临时管控，还是以学校最新通知和校门现场保安要求为准。[think]"
+    )
+
+
+def format_course_leave_reply() -> str:
+    leave = load_campus_life().get("course_leave", {})
+    known = leave.get("known") or []
+    if not known:
+        return "课程请假流程我这里没有可靠信息，建议问班主任、辅导员或看爱城院里的最新入口。[think]"
+    return (
+        f"课程请假我这里记的是：{'；'.join(known)}。"
+        "是否批准、要不要补材料，还是以班主任、辅导员或课程老师要求为准。[think]"
+    )
+
+
 def campus_query_channel_reply(user_msg: str) -> str | None:
     text = user_msg or ""
     has_card_balance = contains_any(text, ("校园卡余额", "饭卡余额", "一卡通余额", "卡里余额", "校园卡还有多少钱"))
@@ -522,6 +544,21 @@ def classify_message(user_msg: str) -> str:
 
     if campus_query_channel_reply(text):
         return "campus_knowledge"
+
+    campus_access_context = contains_any(text, (
+        "家长车", "家长开车", "开车进校", "车进校", "车能进校", "车辆进校",
+        "校外人员进校", "外来人员进校", "进校申请", "入校申请", "一码通", "城院通",
+        "保安看", "给保安看",
+    ))
+    if campus_access_context:
+        return "campus_access"
+
+    course_leave_context = contains_any(text, (
+        "课程请假", "学生课程请假", "请假申请", "请假要在哪里", "请假在哪里",
+        "请假怎么", "怎么请假", "在哪请假", "请假流程", "请假条",
+    ))
+    if course_leave_context:
+        return "course_leave"
 
     private_record_context = contains_any(text, ("成绩", "查分", "绩点", "期末分", "考试分"))
     private_record_query = contains_any(text, (
@@ -688,6 +725,12 @@ def template_reply(user_msg: str) -> str | None:
 
     if category == "transportation":
         return format_transportation_reply()
+
+    if category == "campus_access":
+        return format_campus_access_reply()
+
+    if category == "course_leave":
+        return format_course_leave_reply()
 
     if category == "private_records":
         return (
