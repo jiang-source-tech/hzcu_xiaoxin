@@ -139,7 +139,7 @@ SKILL.md
 
 当前结构化知识库：
 
-- `campus_life.json`：食堂、宿舍、交通、快递、穿衣等校园生活知识。
+- `campus_life.json`：食堂、饮品、快餐、便利店、打印、宿舍服务、交通、快递、穿衣等校园生活知识。
 - `campus_directory.json`：校园办事地点，如学工办、教学办、校园卡服务中心、心理咨询中心等。
 - `student_affairs_qa.json`：学生事务问答，如校园卡、医保、奖助学金、证明、心理健康等。
 
@@ -149,13 +149,18 @@ SKILL.md
 - 二食堂没有写“送餐机器人”。
 - 当前食堂清单是：北校区有北秀食堂、石榴红餐厅、浙大工程师学院食堂；南校区有二食堂、学苑餐厅、晨苑餐厅。
 - `campus_life.json` 已新增 `beverage_spots`，用于记录奶茶、咖啡等饮品点位；当前包括南校区晨苑食堂旁边益禾堂、致远楼那里瑞幸咖啡、风雨操场下的启真教育教室里面库迪咖啡，以及北校区 CC 梦工厂里面幸运咖、北秀食堂楼下一点点奶茶/古茗/瑞幸咖啡。
-- `campus_life.json` 已新增 `quick_service_spots`，用于记录快餐、便利店、鲜奶等生活点；当前包括南校区晨苑餐厅旁肯德基，以及北校区北秀食堂下面塔斯汀·中国汉堡、一鸣真鲜奶、711 便利店。
-- `campus_directory.json` 中有饮品点位和快餐便利点位的短答入口，便于“哪里买奶茶/咖啡”“肯德基/塔斯汀在哪”等问法稳定命中。
-- 对饮品、快餐、便利店等生活消费点，只回答知识库明确写出的名称和位置；不编造营业时间、价格、库存、排队情况、窗口或口味排行。
+- `campus_life.json` 已新增 `quick_service_spots`，用于记录快餐、便利店、鲜奶等综合生活点；当前包括南校区晨苑餐厅旁肯德基，以及北校区北秀食堂下面塔斯汀·中国汉堡和一鸣真鲜奶。
+- 711 便利店的位置是北校区北秀食堂旁边；如果用户误问成“北秀食堂下面”，小芯需要纠正。
+- `campus_life.json` 已新增 `convenience_spots`，用于记录超市、小超市和便利店；当前包括南校区二食堂旁边启真超市、晨苑食堂旁边小超市，以及北校区北秀食堂旁边 711 便利店。
+- `campus_life.json` 已新增 `printing_services`，用于记录打印服务；当前包括南校区晨苑食堂旁边打印店、北校区北秀食堂一楼打印店，以及很多教学楼里的扫码自助打印机。
+- `campus_life.json` 已新增 `dorm_services`，用于记录宿舍热水、空调租赁和宿舍维修；当前包括热水大概早上六点多到晚上 11:30 左右，空调租赁问宿管阿姨，宿舍维修在爱城院-智慧公寓里报修。
+- `campus_directory.json` 中有饮品点位、快餐点位、便利店/超市、打印、宿舍服务和宿舍网络报修的短答入口，便于“哪里买奶茶/咖啡”“肯德基/塔斯汀在哪”“711 在哪”“哪里打印”“宿舍网断了在哪报修”等问法稳定命中。
+- 对饮品、快餐、便利店、打印、宿舍服务等生活消费和服务点，只回答知识库明确写出的名称、位置或大概规则；不编造营业时间、价格、库存、排队情况、窗口、处理进度或口味排行。
 - 学生平时会使用“爱城院”软件沟通，上面也会有活动通知；年级群或班级群里，辅导员也会通知一些事务和活动安排。
 - 校园卡余额可以在“爱城院”中查询；成绩、绩点等学习结果可以在教务系统中查询，小芯不能代查具体结果。
 - 信电学院公开资料中可提及的活动类型包括迎新类活动、青芯沙龙、蓝桥杯相关报道、劳模工匠进城院报告会、新生学长团/军训副排招募、就业赋能和党建共建等；不要编造科技文化节或机器人现场画面。
 - 学生事务回答必须提醒“以学校或学院最新通知为准”。
+- 真实聊天审计已加固的边界包括：不能帮用户拿宿管等私人联系方式，不能替用户预约心理咨询，不能代查个人档案内容；遇到这些问法应短答拒绝并给出可行的官方或现实求助路径。
 
 知识库命中逻辑在 `boundary_guard.py`：
 
@@ -165,6 +170,10 @@ SKILL.md
 - `campus_knowledge_reply()`
 - `format_canteen_locations()`
 - `format_canteen_public_details()`
+- `format_beverage_location_reply()`
+- `format_quick_service_location_reply()`
+- `format_convenience_location_reply_for_text()`
+- `format_printing_location_reply_for_text()`
 
 注意：用户提到“煎包/瘦肉丸”等词时可以作为食堂语境触发词，但不能把它们说成知识库事实。
 
@@ -189,8 +198,15 @@ SKILL.md
 - `official_process`：缴费、选课、退课、补考报名、换寝室、停水停电等。
 - `official_contact`：实验中心、学院、老师、辅导员等联系方式。
 - `competition_resources`：竞赛资源、源文件、队长、学长联系方式。
+- `private_contact`：让小芯帮忙拿宿管、学长学姐、同学等私人联系方式。
+- `psychology_proxy_booking`：让小芯直接替用户预约心理咨询。
+- `personal_archive_lookup`：让小芯查询或代拿个人档案内容。
 - `canteen_locations`：食堂都在哪里、有哪些食堂。
 - `canteen_recommendation`：最好吃、推荐、价格、窗口、营业时间。
+- `beverage_locations`：奶茶、咖啡、饮品点位。
+- `quick_service_locations`：肯德基、塔斯汀、一鸣真鲜奶等快餐/鲜奶点位。
+- `convenience_locations`：超市、小超市、711 便利店等点位。
+- `printing_locations`：打印店、打印机、扫码自助打印等点位。
 - `campus_knowledge`：命中 `campus_directory.json` 或 `student_affairs_qa.json`。
 - `open_chat`：普通聊天。
 
@@ -206,6 +222,9 @@ SKILL.md
 
 - 食堂位置：从 `campus_life.json` 列出已知餐饮点，不编楼号楼层。
 - 食堂推荐：只复述公开描述和已知餐饮点，不乱封“最好吃”。
+- 饮品、快餐、便利店位置：从 `campus_life.json` 对应 section 列出已知点位；如果用户误问 711 的位置，应纠正为“北秀食堂旁边”。
+- 打印位置：南校区晨苑食堂旁边、北校区北秀食堂一楼、很多教学楼扫码自助打印；如果用户问“北秀食堂二楼”，应纠正为一楼。
+- 宿舍维修和宿舍网络报修：引导到爱城院-智慧公寓；宿舍网络故障也可去一楼宿管处报修。
 - 校园地点和学生事务：命中知识库后短答，提醒以最新通知为准。
 - 通知渠道：提醒看爱城院、学校/学院正式通知、年级群/班级群和辅导员通知，但不能声称自己看到了实时通知内容。
 - 学院活动：只概括公开资料中出现过的活动类型，并提醒具体时间、地点、报名以爱城院和正式通知为准。
@@ -213,6 +232,9 @@ SKILL.md
 - 成绩隐私：不能查成绩或绩点。
 - 官方流程：缴费、选课、调宿舍等转向正式通知、系统、辅导员。
 - 官方联系方式：不能替用户问，也不能编联系方式。
+- 私人联系方式：不能帮用户拿宿管、学长学姐、同学等私人手机号、微信或邮箱；可以提示用户通过现实的宿管处、辅导员或官方渠道沟通。
+- 心理咨询代预约：不能替用户预约；可以给出已知预约电话 `88296000` 和现场预约地点 `理四114`，并可帮用户整理要说的话。
+- 个人档案代查：不能替用户查询个人档案内容；应引导按学校档案馆或官方渠道申请查询。
 - 报考和志愿：不能预测录取概率，不能替用户选专业。
 - 心理危机：引导现实求助。
 
@@ -306,7 +328,7 @@ SKILL.md
 3. 跑：
 
 ```bash
-python -m unittest web.tests.test_selfplay_end web.tests.test_selfplay_openings
+python -m pytest web/tests/test_selfplay_end.py web/tests/test_selfplay_openings.py
 ```
 
 ## 11. 测试体系
@@ -314,7 +336,7 @@ python -m unittest web.tests.test_selfplay_end web.tests.test_selfplay_openings
 运行全部测试：
 
 ```bash
-python -m unittest discover web/tests
+python -m pytest web/tests
 ```
 
 常用测试文件：
@@ -326,6 +348,8 @@ python -m unittest discover web/tests
 - `test_selfplay_openings.py`：测试页角色和开场白。
 - `test_skill_boundaries.py`：`SKILL.md` 边界、prompt 两文件结构。
 - `test_relationship.py`：关系状态、问候、turn 分析。
+
+最近一次真实聊天审计也回灌到 `test_boundary_guard.py`：宿管联系方式、心理咨询代预约、个人档案代查、北秀打印店楼层纠错、宿舍网络报修等问法需要保持稳定。
 
 ## 12. 发布前检查
 
@@ -342,4 +366,5 @@ git status --short
 - 食堂回复不包含已审查排除的错误事实。
 - 行政事务命中知识库时能回答，不一律拒答。
 - 开放聊天仍自然，不像关键词模板。
+- 对 `/api/chat` 做一轮真实冒烟审计，至少覆盖校园生活知识、自由聊天、硬边界、私人联系方式、心理咨询代预约、个人档案代查和宿舍网络报修。
 - `.env`、运行时 `data/`、真实 API key 没有被提交。
