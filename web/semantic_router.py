@@ -24,6 +24,7 @@ KNOWLEDGE_CATEGORIES = {
     "canteen_recommendation": ["canteen"],
     "beverage_locations": ["beverage_spots"],
     "quick_service_locations": ["quick_service_spots"],
+    "convenience_locations": ["convenience_spots"],
     "campus_knowledge": ["campus_directory", "student_affairs"],
     "notice_channels": ["notice_channels"],
     "college_activities": ["college_activities"],

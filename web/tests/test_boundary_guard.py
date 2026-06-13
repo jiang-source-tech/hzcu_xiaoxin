@@ -131,6 +131,46 @@ class BoundaryGuardTest(unittest.TestCase):
         self.assertIn("塔斯汀", reply)
         self.assertIn("一鸣真鲜奶", reply)
         self.assertIn("711便利店", reply)
+        self.assertIn("北秀食堂旁边", reply)
+
+    def test_printing_location_question_answers_known_print_options(self):
+        reply = guard.template_reply("小芯，学校哪里可以打印东西？")
+
+        self.assertIsNotNone(reply)
+        self.assertIn("晨苑食堂旁边", reply)
+        self.assertIn("北秀食堂一楼", reply)
+        self.assertIn("扫码自助打印", reply)
+
+    def test_supermarket_location_question_uses_updated_convenience_spots(self):
+        reply = guard.template_reply("学校超市和便利店都在哪里？")
+
+        self.assertIsNotNone(reply)
+        self.assertIn("二食堂旁边", reply)
+        self.assertIn("启真超市", reply)
+        self.assertIn("晨苑食堂旁边", reply)
+        self.assertIn("小超市", reply)
+        self.assertIn("北秀食堂旁边", reply)
+        self.assertIn("711便利店", reply)
+
+    def test_dorm_hot_water_question_answers_rough_supply_time(self):
+        reply = guard.template_reply("宿舍热水大概供应到几点？")
+
+        self.assertIsNotNone(reply)
+        self.assertIn("早上六点多", reply)
+        self.assertIn("晚上11:30", reply)
+
+    def test_air_conditioner_rental_question_points_to_dorm_manager(self):
+        reply = guard.template_reply("宿舍空调租赁要怎么弄？")
+
+        self.assertIsNotNone(reply)
+        self.assertIn("宿管阿姨", reply)
+
+    def test_dorm_repair_question_points_to_aichengyuan_smart_apartment(self):
+        reply = guard.template_reply("宿舍东西坏了怎么报修？")
+
+        self.assertIsNotNone(reply)
+        self.assertIn("爱城院", reply)
+        self.assertIn("智慧公寓", reply)
 
     def test_canteen_emotional_experience_does_not_trigger_location_template(self):
         reply = guard.template_reply("北秀食堂我知道在哪了，里面好吵，我有点慌，是不是正常呀？")

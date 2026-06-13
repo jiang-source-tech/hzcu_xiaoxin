@@ -177,6 +177,12 @@ def asks_quick_service_locations(text: str) -> bool:
     ))
 
 
+def asks_convenience_locations(text: str) -> bool:
+    return contains_any(text, (
+        "超市", "小超市", "小卖部", "买东西", "买零食", "零食", "日用品", "启真超市",
+    ))
+
+
 def format_beverage_location_reply() -> str:
     locations = format_life_spot_locations("beverage_spots")
     if not locations:
@@ -194,6 +200,16 @@ def format_quick_service_location_reply() -> str:
     return (
         f"快餐和便利点我这里知道这些：{locations}。"
         "营业时间、价格、库存和排队情况可能会变，最好以现场或店铺最新信息为准。[think]"
+    )
+
+
+def format_convenience_location_reply() -> str:
+    locations = format_life_spot_locations("convenience_spots")
+    if not locations:
+        return "超市和便利店这块我这里没有可靠地点。建议看校园地图或现场信息。[think]"
+    return (
+        f"超市和便利店我这里知道这些：{locations}。"
+        "营业时间、库存和价格可能会变，最好以现场或店铺最新信息为准。[think]"
     )
 
 
@@ -488,6 +504,9 @@ def classify_message(user_msg: str) -> str:
     if asks_beverage_locations(text):
         return "beverage_locations"
 
+    if asks_convenience_locations(text):
+        return "convenience_locations"
+
     if asks_quick_service_locations(text):
         return "quick_service_locations"
 
@@ -527,6 +546,9 @@ def template_reply(user_msg: str) -> str | None:
 
     if category == "quick_service_locations":
         return format_quick_service_location_reply()
+
+    if category == "convenience_locations":
+        return format_convenience_location_reply()
 
     if category == "campus_knowledge":
         return campus_query_channel_reply(user_msg) or campus_knowledge_reply(user_msg)
