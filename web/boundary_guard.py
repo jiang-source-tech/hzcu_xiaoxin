@@ -100,6 +100,14 @@ def find_student_affairs_item(user_msg: str) -> dict | None:
 
 
 def campus_knowledge_reply(user_msg: str) -> str | None:
+    text = user_msg or ""
+    network_repair_context = contains_any(text, ("宿舍网", "校园网", "网络故障", "断网", "网断了", "wifi", "WiFi", "没网"))
+    if network_repair_context and contains_any(text, ("报修", "坏了", "断了", "连不上", "哪里", "在哪", "怎么")):
+        return (
+            "宿舍网络故障可以登录爱城院的智慧公寓板块线上报修，也可以去一楼宿管处报修。"
+            "具体处理进度和临时安排以平台反馈或宿管通知为准。[think]"
+        )
+
     directory_entry = find_campus_directory_entry(user_msg)
     if directory_entry:
         answer = _compact_answer(directory_entry.get("answer", ""))
@@ -221,6 +229,22 @@ def format_convenience_location_reply_for_text(text: str) -> str:
             "营业时间、库存和价格可能会变，最好以现场或店铺最新信息为准。[think]"
         )
     return format_convenience_location_reply()
+
+
+def format_printing_location_reply_for_text(text: str) -> str:
+    if contains_any(text, ("北秀食堂二楼", "北秀二楼")):
+        return (
+            "北校区打印店我这里记的是在北秀食堂一楼，不是二楼。"
+            "很多教学楼也有打印机，可以扫码自助打印；价格和设备状态以现场为准。[think]"
+        )
+
+    locations = format_life_spot_locations("printing_services")
+    if locations:
+        return (
+            f"打印这块我这里知道这些：{locations}。"
+            "很多教学楼也有打印机，可以扫码自助打印；价格和设备状态以现场为准。[think]"
+        )
+    return campus_knowledge_reply(text) or "打印点位这块我这里没有可靠地点，建议现场确认。[think]"
 
 
 def format_canteen_public_details() -> str:
@@ -428,6 +452,22 @@ def classify_message(user_msg: str) -> str:
     if is_action_commitment(text):
         return "open_chat"
 
+    private_contact_context = contains_any(text, ("联系方式", "电话", "手机号", "微信", "邮箱"))
+    private_contact_target = contains_any(text, ("宿管", "宿管阿姨", "寝室阿姨", "阿姨", "学长", "学姐", "同学"))
+    private_contact_fetch = contains_any(text, ("帮我拿", "拿一下", "要一下", "问一下", "帮我问", "帮我联系", "替我问", "替我联系"))
+    if private_contact_context and private_contact_target and private_contact_fetch:
+        return "private_contact"
+
+    psychology_context = contains_any(text, ("心理咨询", "心理中心", "心理老师", "心理预约", "心情不太好", "心情不好", "焦虑"))
+    proxy_booking_context = contains_any(text, ("帮我预约", "直接帮我预约", "替我预约", "帮我约", "替我约", "你预约"))
+    if psychology_context and proxy_booking_context:
+        return "psychology_proxy_booking"
+
+    archive_context = contains_any(text, ("档案内容", "我的档案", "个人档案", "学籍档案"))
+    archive_lookup_context = contains_any(text, ("帮我查", "去查", "查一下", "看看", "能不能查", "告诉我"))
+    if archive_context and archive_lookup_context:
+        return "personal_archive_lookup"
+
     admissions_context = contains_any(text, (
         "高三", "报考", "志愿", "录取概率", "分数线", "能不能上", "稳不稳", "稳吗",
         "想考浙大城市学院", "考浙大城市学院", "哪个专业", "专业适合", "帮我选",
@@ -474,6 +514,14 @@ def classify_message(user_msg: str) -> str:
         "在校证明", "成绩单", "证明打印", "自助打印", "打印终端", "学生事务服务中心",
     ))
     if certificate_service_context:
+        return "campus_knowledge"
+
+    printing_context = contains_any(text, ("打印店", "打印机", "打印东西", "哪里可以打印", "扫码打印"))
+    if printing_context:
+        return "printing_locations"
+
+    network_repair_context = contains_any(text, ("宿舍网", "校园网", "网络故障", "断网", "网断了", "wifi", "WiFi", "没网"))
+    if network_repair_context and contains_any(text, ("报修", "坏了", "断了", "连不上", "哪里", "在哪", "怎么")):
         return "campus_knowledge"
 
     official_contact_context = contains_any(text, ("联系方式", "电话", "手机号", "微信", "邮箱"))
@@ -566,6 +614,9 @@ def template_reply(user_msg: str) -> str | None:
     if category == "convenience_locations":
         return format_convenience_location_reply_for_text(user_msg or "")
 
+    if category == "printing_locations":
+        return format_printing_location_reply_for_text(user_msg or "")
+
     if category == "campus_knowledge":
         return campus_query_channel_reply(user_msg) or campus_knowledge_reply(user_msg)
 
@@ -602,6 +653,24 @@ def template_reply(user_msg: str) -> str | None:
         return (
             "这个我这里没有可靠联系方式，不能替你去问，也不能编一个给你。最好由你自己确认学校或学院的官方渠道、"
             "公开通知，或者问现实里的负责老师；如果你要发消息，我可以帮你把问题整理得清楚一点。[think]"
+        )
+
+    if category == "private_contact":
+        return (
+            "这个我不能帮你拿具体联系方式，也不能编手机号或微信给你。"
+            "空调租赁这类事，开学时你直接问宿管阿姨，或者看宿舍通知会更稳。[think]"
+        )
+
+    if category == "psychology_proxy_booking":
+        return (
+            "我不能替你预约心理咨询，但你不用一个人硬扛。可以自己拨打88296000预约，"
+            "也可以在工作时间去理四114现场预约；如果你愿意，我可以帮你把要说的话理一理。[think]"
+        )
+
+    if category == "personal_archive_lookup":
+        return (
+            "我不能替你查询个人档案内容，也不能代拿个人档案结果。"
+            "档案相关服务可以按学校档案馆或官方渠道申请查询，具体以学校最新流程为准。[think]"
         )
 
     if category == "admissions_guidance":

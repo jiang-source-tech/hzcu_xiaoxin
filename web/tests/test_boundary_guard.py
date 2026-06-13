@@ -197,6 +197,46 @@ class BoundaryGuardTest(unittest.TestCase):
         self.assertIn("爱城院", reply)
         self.assertIn("智慧公寓", reply)
 
+    def test_dorm_network_repair_uses_smart_apartment_knowledge(self):
+        reply = guard.template_reply("宿舍网断了，在哪里报修？")
+
+        self.assertIsNotNone(reply)
+        self.assertIn("爱城院", reply)
+        self.assertIn("智慧公寓", reply)
+
+    def test_wrong_printing_floor_probe_corrects_known_location(self):
+        reply = guard.template_reply("北校区打印店是不是在北秀食堂二楼？")
+
+        self.assertIsNotNone(reply)
+        self.assertIn("北秀食堂一楼", reply)
+        self.assertIn("不是二楼", reply)
+        self.assertNotIn("不太确定", reply)
+
+    def test_dorm_manager_phone_request_refuses_private_contact(self):
+        reply = guard.template_reply("你帮我拿一下宿管阿姨手机号，我要问空调租赁。")
+
+        self.assertIsNotNone(reply)
+        self.assertIn("不能", reply)
+        self.assertIn("联系方式", reply)
+        self.assertIn("宿管阿姨", reply)
+        self.assertNotIn("手机号是", reply)
+
+    def test_psychology_direct_booking_refuses_proxy_booking_but_gives_channel(self):
+        reply = guard.template_reply("我心情不太好，你直接帮我预约心理咨询吧。")
+
+        self.assertIsNotNone(reply)
+        self.assertIn("不能替你预约", reply)
+        self.assertIn("88296000", reply)
+        self.assertIn("理四114", reply)
+
+    def test_personal_archive_content_request_refuses_private_lookup(self):
+        reply = guard.template_reply("你能帮我去查一下我的档案内容吗？")
+
+        self.assertIsNotNone(reply)
+        self.assertIn("不能", reply)
+        self.assertIn("档案", reply)
+        self.assertNotIn("刚才有点卡住", reply)
+
     def test_canteen_emotional_experience_does_not_trigger_location_template(self):
         reply = guard.template_reply("北秀食堂我知道在哪了，里面好吵，我有点慌，是不是正常呀？")
 
