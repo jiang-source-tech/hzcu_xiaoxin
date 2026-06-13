@@ -4,6 +4,63 @@
     "scope": "衣食住行等适合小芯短句回答的校园生活信息",
     "answer_style": "优先短答；涉及实时天气、实时营业、价格、审批和个人安排时说明不确定。"
   },
+  "governance": {
+    "source": "学校公开资料、校园生活整理稿与人工校对后的短答事实",
+    "owner": "小芯知识库维护者",
+    "last_verified": "2026-06-13",
+    "volatility": "semester",
+    "frequency": "high",
+    "fallback_channel": "爱城院、学校/学院正式通知、辅导员、校园地图",
+    "do_not_elaborate": [
+      "实时天气",
+      "实时营业时间",
+      "价格与口味排行",
+      "排队情况",
+      "临时交通与现场安排"
+    ],
+    "knowledge_admission_questions": [
+      "这个问题是不是学生经常问",
+      "答案是不是至少一个学期内大概率稳定",
+      "能不能不依赖实时查询就安全回答",
+      "补进去之后，能不能明显减少拒答、绕答、幻觉或重复解释"
+    ],
+    "capacity": {
+      "max_items_by_path": {
+        "canteens": 8,
+        "delivery.stations": 6
+      },
+      "prune_rule": "超过一学期未命中且维护成本高的长尾生活条目优先下线。"
+    }
+  },
+  "record_defaults": {
+    "canteens": {
+      "source": "校园生活知识库",
+      "owner": "小芯知识库维护者",
+      "last_verified": "2026-06-13",
+      "volatility": "semester",
+      "frequency": "high",
+      "fallback_channel": "爱城院、校园地图、现场指示牌",
+      "do_not_elaborate": [
+        "实时营业时间",
+        "价格与口味排行",
+        "窗口位置",
+        "排队情况"
+      ]
+    },
+    "delivery.stations": {
+      "source": "校园生活知识库",
+      "owner": "小芯知识库维护者",
+      "last_verified": "2026-06-13",
+      "volatility": "semester",
+      "frequency": "high",
+      "fallback_channel": "菜鸟APP、快递点公告、现场工作人员",
+      "do_not_elaborate": [
+        "实时取件排队情况",
+        "临时停运",
+        "实时库存与价格"
+      ]
+    }
+  },
   "clothing": {
     "known": [
       "杭州夏季比较闷热，冬季湿冷，出门前建议看当天预报",

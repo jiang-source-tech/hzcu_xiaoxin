@@ -27,6 +27,36 @@ class BoundaryGuardTest(unittest.TestCase):
         self.assertIn("爱城院", "".join(data["communication_channels"]["known"]))
         self.assertIn("campus_access", data)
         self.assertIn("城院通", "".join(data["campus_access"]["known"]))
+        self.assertIn("governance", data)
+
+    def test_loaded_knowledge_records_inherit_governance_metadata(self):
+        datasets = [
+            ("campus_directory", guard.load_campus_directory()["entries"][0]),
+            ("student_affairs", guard.load_student_affairs()["items"][0]),
+            ("canteens", guard.load_campus_life()["canteens"][0]),
+            ("college_facts", guard.load_college_companion_facts()["entries"][0]),
+        ]
+
+        for label, record in datasets:
+            with self.subTest(dataset=label):
+                for field in (
+                    "source",
+                    "owner",
+                    "last_verified",
+                    "volatility",
+                    "frequency",
+                    "fallback_channel",
+                    "do_not_elaborate",
+                ):
+                    self.assertIn(field, record)
+                self.assertIn(record["volatility"], {"stable", "semester", "high"})
+                self.assertIn(record["frequency"], {"high", "medium", "low"})
+                self.assertIsInstance(record["do_not_elaborate"], list)
+        for record in guard.load_college_companion_facts()["entries"]:
+            with self.subTest(dataset="college_facts_source_refs", record=record["id"]):
+                self.assertIn("source_refs", record)
+                self.assertIsInstance(record["source_refs"], list)
+                self.assertTrue(record["source_refs"])
 
     def test_speech_text_cuts_only_at_sentence_boundaries(self):
         text = "第一句完整。第二句也完整！第三句还完整。第四句继续。第五句不要播到一半。"
@@ -344,6 +374,34 @@ class BoundaryGuardTest(unittest.TestCase):
         self.assertIn("爱城院", reply)
         self.assertNotIn("科技文化节", reply)
         self.assertNotIn("机器人去操场", reply)
+
+    def test_college_facts_template_answers_stable_major_difference(self):
+        reply = guard.template_reply("小芯，自动化和电子信息工程有什么区别啊？")
+
+        self.assertIsNotNone(reply)
+        self.assertIn("自动化偏控制和系统", reply)
+        self.assertIn("电子信息偏硬件和信号", reply)
+        self.assertIn("[think]", reply)
+        self.assertNotIn("控制器", reply)
+        self.assertNotIn("嵌入式开发", reply)
+
+    def test_college_facts_template_answers_training_path(self):
+        reply = guard.template_reply("小芯，你们学院有什么创新实验班或者产业班吗？")
+
+        self.assertIsNotNone(reply)
+        self.assertIn("创新实验班", reply)
+        self.assertIn("大华", reply)
+        self.assertIn("新华三", reply)
+        self.assertNotIn("录取概率", reply)
+
+    def test_college_facts_direction_answer_stays_on_known_difference(self):
+        reply = guard.template_reply("如果我现在还拿不准自动化和电子信息的方向，该怎么判断？")
+
+        self.assertIsNotNone(reply)
+        self.assertIn("电子信息偏硬件和信号", reply)
+        self.assertIn("自动化偏控制和系统", reply)
+        self.assertNotIn("实验室看看", reply)
+        self.assertNotIn("心跳加速", reply)
 
     def test_official_contact_template_refuses_to_fetch_contacts(self):
         reply = guard.template_reply("你能帮我问一下实验中心的联系方式吗？")

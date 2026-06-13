@@ -287,16 +287,12 @@ def fallback_xiaoxin_reply(user_msg: str) -> str:
     return guard.fallback_reply(user_msg)
 
 
-def knowledge_reference_for_route(user_msg: str, route: dict) -> str | None:
-    """Return bounded knowledge text for the current semantic route."""
+def knowledge_reference_for_route(user_msg: str, route: dict) -> dict | None:
+    """Return bounded knowledge facts for the current semantic route."""
     if route.get("reply_mode") != "knowledge_grounded":
         return None
 
-    reference = guard.template_reply(user_msg)
-    if reference:
-        return reference
-
-    return None
+    return guard.knowledge_grounding_context(user_msg)
 
 
 def build_route_instruction(user_msg: str, route: dict) -> str | None:
@@ -322,11 +318,15 @@ def build_route_instruction(user_msg: str, route: dict) -> str | None:
 
     focus = route.get("focus") or "用户当前问题"
     domains = "、".join(route.get("knowledge_domains") or []) or "校园知识"
+    disallowed = "；".join(reference.get("do_not_add") or [])
+    preferred_fallback = reference.get("preferred_fallback") or "如果不确定，就直接提醒用户看正式渠道确认。"
     return (
         f"本轮语义路由判断需要知识库支撑。焦点：{focus}；知识域：{domains}。\n"
-        f"本轮可用知识库事实：{guard.strip_expression(reference)}\n"
-        "请只基于这些事实自然回答，2-4句；不要照搬模板开头；不要编造超出事实的信息；"
-        "如果事实不足，就直接说明不确定并建议看爱城院、学校/学院正式通知、年级群或辅导员通知。"
+        f"本轮可用知识库事实：{reference.get('facts', '')}\n"
+        "你只能改写这些事实，不能新增任何事实、步骤、要求、例子、评价或经验。\n"
+        f"这轮禁止补充：{disallowed}。\n"
+        "回答控制在2-3句，口语化，但不要照搬模板开头。\n"
+        f"如果事实不足，只能补一句这种级别的确认提醒：{preferred_fallback}"
     )
 
 
@@ -371,6 +371,12 @@ def route_retry_instruction(route: dict, mismatch: str) -> str:
             "上一条回复焦点错了。用户真正问的是晨苑餐厅，不要展开北秀食堂资料，不要提面馆；"
             "只围绕晨苑已知/未知信息自然回答，2-4句，可以带一个表情标记。"
         )
+    if mismatch == "knowledge_scope_violation":
+        return (
+            "上一条回复超出了知识库边界。请重写：只把已给出的知识事实换成自然口语，"
+            "不要新增证件要求、流程细节、课程延展、实验室建议、老师评价或替用户做选择；"
+            "如果事实不够，只能补一句很轻的确认提醒。"
+        )
     return "上一条回复和本轮语义焦点不匹配。请按用户真实问题重写，简短自然，不要输出模板长文。"
 
 
@@ -380,13 +386,49 @@ def fallback_reply_for_route(user_msg: str, route: dict) -> str:
     return fallback_xiaoxin_reply(user_msg)
 
 
-def generate_xiaoxin_reply(user_msg: str, messages: list[dict], route: dict) -> str:
+def reply_exceeds_knowledge_scope(route: dict, reply: str, knowledge_context: dict | None) -> bool:
+    if route.get("reply_mode") != "knowledge_grounded" or not knowledge_context:
+        return False
+
+    clean = guard.strip_expression(reply)
+    facts = knowledge_context.get("facts", "")
+    allowed_fallback = knowledge_context.get("preferred_fallback", "")
+    intent = route.get("intent")
+
+    unsupported_terms = {
+        "campus_knowledge": ("身份证", "学生证", "办公时间", "营业时间", "排队", "价格", "先预约"),
+        "college_facts": ("实验室", "心跳加速", "很酷的项目", "你适合", "建议你选", "就业", "薪资", "老师"),
+    }
+    for term in unsupported_terms.get(intent, ()):
+        if term in clean and term not in facts:
+            return True
+
+    if intent == "college_facts":
+        advice_markers = ("你可以去", "去看看", "更适合你", "帮你选", "替你拍板")
+        if any(marker in clean for marker in advice_markers) and not any(marker in facts for marker in advice_markers):
+            return True
+        soft_markers = ("你心里", "别着急", "慢慢来", "放心", "就好")
+        for marker in soft_markers:
+            if marker in clean and marker not in facts and marker not in allowed_fallback:
+                return True
+
+    return False
+
+
+def generate_xiaoxin_reply(
+    user_msg: str,
+    messages: list[dict],
+    route: dict,
+    knowledge_context: dict | None = None,
+) -> str:
     """Call the Xiaoxin model with route-aware instructions and repair checks."""
+    base_temperature = 0.35 if route.get("reply_mode") == "knowledge_grounded" else 0.8
+
     try:
         response = client.chat.completions.create(
             model=MODEL,
             messages=messages,
-            temperature=0.8,
+            temperature=base_temperature,
             max_tokens=XIAOXIN_MAX_TOKENS,
         )
     except Exception:
@@ -401,7 +443,7 @@ def generate_xiaoxin_reply(user_msg: str, messages: list[dict], route: dict) -> 
         response = client.chat.completions.create(
             model=MODEL,
             messages=retry_messages,
-            temperature=0.6,
+            temperature=0.25 if route.get("reply_mode") == "knowledge_grounded" else 0.6,
             max_tokens=XIAOXIN_MAX_TOKENS,
         )
         reply = response.choices[0].message.content.strip()
@@ -416,6 +458,19 @@ def generate_xiaoxin_reply(user_msg: str, messages: list[dict], route: dict) -> 
             model=MODEL,
             messages=retry_messages,
             temperature=0.5,
+            max_tokens=XIAOXIN_MAX_TOKENS,
+        )
+        reply = response.choices[0].message.content.strip()
+
+    if reply_exceeds_knowledge_scope(route, reply, knowledge_context):
+        retry_messages = [
+            *messages,
+            {"role": "system", "content": route_retry_instruction(route, "knowledge_scope_violation")},
+        ]
+        response = client.chat.completions.create(
+            model=MODEL,
+            messages=retry_messages,
+            temperature=0.2,
             max_tokens=XIAOXIN_MAX_TOKENS,
         )
         reply = response.choices[0].message.content.strip()
@@ -437,6 +492,7 @@ def generate_xiaoxin_reply(user_msg: str, messages: list[dict], route: dict) -> 
         is_fragmented_xiaoxin_reply(reply)
         or is_boundary_violating_xiaoxin_reply(user_msg, reply)
         or reply_mismatches_route(route, reply)
+        or reply_exceeds_knowledge_scope(route, reply, knowledge_context)
     ):
         reply = fallback_reply_for_route(user_msg, route)
 
@@ -631,11 +687,12 @@ def chat():
     for h in history[-20:]:
         messages.append(h)
     messages.append({"role": "user", "content": user_msg})
+    knowledge_context = knowledge_reference_for_route(user_msg, route)
     messages = with_route_instruction(messages, build_route_instruction(user_msg, route))
 
     # 调用 DeepSeek API
     try:
-        reply = generate_xiaoxin_reply(user_msg, messages, route)
+        reply = generate_xiaoxin_reply(user_msg, messages, route, knowledge_context=knowledge_context)
     except Exception as e:
         print(f"[API ERROR] {e}")
         return jsonify({"error": f"API 调用失败: {str(e)}"}), 500

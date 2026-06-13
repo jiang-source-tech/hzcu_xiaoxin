@@ -32,9 +32,9 @@
 - `skills/xiaoxin-senior/SKILL.md` 是长期稳定的人格和边界提示词。
 - `skills/xiaoxin-senior/prompts/` 只保留 `memory_protocol.md` 和 `growth_protocol.md`。
 - 校园生活、学生事务、校园地点事实放在 `web/knowledge/*.json`。
-- 后端先通过 `semantic_router.route_message()` 判断本轮是硬边界、知识库问答还是自由聊天，避免把感谢、行动确认、情绪表达误判成知识库模板。
-- `boundary_guard.template_reply()` 仍负责硬边界短答和结构化知识库事实文本；知识库问答会把事实作为本轮约束注入模型，自由聊天则强调自然接话。
-- 模型回复后继续做路由错配检测、越界检测、半截回复检测和 TTS 裁剪。
+- `semantic_router.py` 先判断本轮是 `hard_template`、`knowledge_grounded` 还是 `free_chat`。
+- 后端通过 `boundary_guard.template_reply()` 处理绝对硬边界；知识型问题仍走模型，但只允许改写给定事实。
+- 模型回复后继续做越界检测、知识范围检测、半截回复检测和 TTS 裁剪。
 
 已完成或已讨论的能力：
 

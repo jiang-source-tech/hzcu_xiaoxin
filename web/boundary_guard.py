@@ -6,6 +6,7 @@ pass through deterministic checks before and after generation.
 
 from __future__ import annotations
 
+import copy
 import json
 import re
 from functools import lru_cache
@@ -18,28 +19,141 @@ KNOWLEDGE_DIR = Path(__file__).resolve().parent / "knowledge"
 CAMPUS_LIFE_FILE = KNOWLEDGE_DIR / "campus_life.json"
 CAMPUS_DIRECTORY_FILE = KNOWLEDGE_DIR / "campus_directory.json"
 STUDENT_AFFAIRS_FILE = KNOWLEDGE_DIR / "student_affairs_qa.json"
+COLLEGE_FACTS_FILE = KNOWLEDGE_DIR / "college_companion_facts.json"
+REQUIRED_RECORD_META_FIELDS = (
+    "source",
+    "owner",
+    "last_verified",
+    "volatility",
+    "frequency",
+    "fallback_channel",
+    "do_not_elaborate",
+)
+REQUIRED_GOVERNANCE_FIELDS = (
+    "source",
+    "owner",
+    "last_verified",
+    "volatility",
+    "frequency",
+    "fallback_channel",
+    "do_not_elaborate",
+    "knowledge_admission_questions",
+    "capacity",
+)
+ALLOWED_VOLATILITY = {"stable", "semester", "high"}
+ALLOWED_FREQUENCY = {"high", "medium", "low"}
+
+
+def _load_knowledge_file(path: Path) -> dict:
+    if not path.exists():
+        return {}
+    with open(path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    _apply_record_defaults(data)
+    _validate_knowledge_governance(data, path.name)
+    return data
+
+
+def _get_records_at_path(data: dict, record_path: str) -> list[dict]:
+    current = data
+    for part in record_path.split("."):
+        if not isinstance(current, dict):
+            return []
+        current = current.get(part)
+    return current if isinstance(current, list) else []
+
+
+def _apply_record_defaults(data: dict) -> None:
+    for record_path, defaults in (data.get("record_defaults") or {}).items():
+        if not isinstance(defaults, dict):
+            continue
+        for record in _get_records_at_path(data, record_path):
+            if not isinstance(record, dict):
+                continue
+            for key, value in defaults.items():
+                if key not in record:
+                    record[key] = copy.deepcopy(value)
+
+
+def _validate_knowledge_governance(data: dict, source_name: str) -> None:
+    governance = data.get("governance")
+    if not isinstance(governance, dict):
+        raise ValueError(f"{source_name} 缺少 governance 配置")
+
+    missing_governance = [key for key in REQUIRED_GOVERNANCE_FIELDS if key not in governance]
+    if missing_governance:
+        raise ValueError(f"{source_name} governance 缺少字段: {', '.join(missing_governance)}")
+
+    if governance.get("volatility") not in ALLOWED_VOLATILITY:
+        raise ValueError(f"{source_name} governance.volatility 非法: {governance.get('volatility')}")
+    if governance.get("frequency") not in ALLOWED_FREQUENCY:
+        raise ValueError(f"{source_name} governance.frequency 非法: {governance.get('frequency')}")
+    if not isinstance(governance.get("do_not_elaborate"), list):
+        raise ValueError(f"{source_name} governance.do_not_elaborate 必须是列表")
+    if not isinstance(governance.get("knowledge_admission_questions"), list):
+        raise ValueError(f"{source_name} governance.knowledge_admission_questions 必须是列表")
+    if not isinstance(governance.get("capacity"), dict):
+        raise ValueError(f"{source_name} governance.capacity 必须是对象")
+
+    record_defaults = data.get("record_defaults") or {}
+    max_items_by_path = governance["capacity"].get("max_items_by_path") or {}
+    for record_path, defaults in record_defaults.items():
+        if not isinstance(defaults, dict):
+            raise ValueError(f"{source_name} record_defaults.{record_path} 必须是对象")
+        missing_meta = [field for field in REQUIRED_RECORD_META_FIELDS if field not in defaults]
+        if missing_meta:
+            raise ValueError(
+                f"{source_name} record_defaults.{record_path} 缺少字段: {', '.join(missing_meta)}"
+            )
+        if defaults.get("volatility") not in ALLOWED_VOLATILITY:
+            raise ValueError(
+                f"{source_name} record_defaults.{record_path}.volatility 非法: {defaults.get('volatility')}"
+            )
+        if defaults.get("frequency") not in ALLOWED_FREQUENCY:
+            raise ValueError(
+                f"{source_name} record_defaults.{record_path}.frequency 非法: {defaults.get('frequency')}"
+            )
+        if not isinstance(defaults.get("do_not_elaborate"), list):
+            raise ValueError(f"{source_name} record_defaults.{record_path}.do_not_elaborate 必须是列表")
+
+        records = _get_records_at_path(data, record_path)
+        max_items = max_items_by_path.get(record_path)
+        if isinstance(max_items, int) and len(records) > max_items:
+            raise ValueError(
+                f"{source_name} {record_path} 条目数 {len(records)} 超过容量上限 {max_items}"
+            )
+        for record in records:
+            missing_record_meta = [field for field in REQUIRED_RECORD_META_FIELDS if field not in record]
+            if missing_record_meta:
+                record_id = record.get("id") or record.get("name") or record_path
+                raise ValueError(
+                    f"{source_name} {record_id} 缺少字段: {', '.join(missing_record_meta)}"
+                )
+            if source_name == COLLEGE_FACTS_FILE.name:
+                source_refs = record.get("source_refs")
+                if not isinstance(source_refs, list) or not source_refs or not all(isinstance(item, str) for item in source_refs):
+                    record_id = record.get("id") or record.get("name") or record_path
+                    raise ValueError(f"{source_name} {record_id} 缺少有效的 source_refs")
 
 
 @lru_cache(maxsize=1)
 def load_campus_life() -> dict:
-    with open(CAMPUS_LIFE_FILE, "r", encoding="utf-8") as f:
-        return json.load(f)
+    return _load_knowledge_file(CAMPUS_LIFE_FILE)
 
 
 @lru_cache(maxsize=1)
 def load_campus_directory() -> dict:
-    if not CAMPUS_DIRECTORY_FILE.exists():
-        return {}
-    with open(CAMPUS_DIRECTORY_FILE, "r", encoding="utf-8") as f:
-        return json.load(f)
+    return _load_knowledge_file(CAMPUS_DIRECTORY_FILE)
 
 
 @lru_cache(maxsize=1)
 def load_student_affairs() -> dict:
-    if not STUDENT_AFFAIRS_FILE.exists():
-        return {}
-    with open(STUDENT_AFFAIRS_FILE, "r", encoding="utf-8") as f:
-        return json.load(f)
+    return _load_knowledge_file(STUDENT_AFFAIRS_FILE)
+
+
+@lru_cache(maxsize=1)
+def load_college_companion_facts() -> dict:
+    return _load_knowledge_file(COLLEGE_FACTS_FILE)
 
 
 def _knowledge_score(text: str, fields: list[str]) -> int:
@@ -97,6 +211,108 @@ def find_student_affairs_item(user_msg: str) -> dict | None:
             best_item = item
             best_score = score
     return best_item if best_score >= 3 else None
+
+
+def find_college_companion_fact(user_msg: str) -> dict | None:
+    text = user_msg or ""
+    best_entry = None
+    best_score = 0
+    for entry in load_college_companion_facts().get("entries", []):
+        fields = []
+        fields.extend(entry.get("aliases") or [])
+        fields.extend(entry.get("search_keywords") or [])
+        fields.append(entry.get("question", ""))
+        score = _knowledge_score(text, fields)
+        if score > best_score:
+            best_entry = entry
+            best_score = score
+    return best_entry if best_score >= 3 else None
+
+
+def _companion_fact_suffix(entry: dict) -> str:
+    volatility = entry.get("volatility")
+    fallback_channel = str(entry.get("fallback_channel", "")).strip()
+    if volatility == "stable" or not fallback_channel:
+        return " [think]"
+    return f" 具体安排还是以{fallback_channel}为准。[think]"
+
+
+def college_companion_reply(user_msg: str) -> str | None:
+    entry = find_college_companion_fact(user_msg)
+    if not entry:
+        return None
+    answer = _compact_answer(entry.get("answer", ""))
+    if not answer:
+        return None
+    if re.search(EXPRESSION_PATTERN, answer):
+        return answer
+    return f"{answer}{_companion_fact_suffix(entry)}"
+
+
+def knowledge_grounding_context(user_msg: str) -> dict | None:
+    category = classify_message(user_msg)
+
+    if category == "campus_knowledge":
+        entry = find_campus_directory_entry(user_msg) or find_student_affairs_item(user_msg)
+        if not entry:
+            return None
+        answer = _compact_answer(entry.get("answer", ""))
+        if not answer:
+            return None
+        return {
+            "category": category,
+            "facts": strip_expression(answer),
+            "preferred_fallback": "如果不放心，可以再找辅导员确认一下。",
+            "do_not_add": [
+                "知识库里没有写明的证件要求",
+                "知识库里没有写明的办公时间",
+                "知识库里没有写明的流程例外",
+                "实时价格、排队情况、窗口状态",
+            ],
+        }
+
+    if category == "college_facts":
+        entry = find_college_companion_fact(user_msg)
+        if not entry:
+            return None
+        answer = _compact_answer(entry.get("answer", ""))
+        if not answer:
+            return None
+        return {
+            "category": category,
+            "facts": strip_expression(answer),
+            "preferred_fallback": "更细的内容建议再看学院公开介绍。",
+            "do_not_add": [
+                "课程细节",
+                "就业前景",
+                "实验室建议",
+                "老师评价",
+                "替用户做选择",
+                "知识库没有写明的方向延展",
+            ],
+        }
+
+    reference = template_reply(user_msg)
+    if not reference:
+        return None
+
+    preferred_fallback = "如果涉及实时安排，还是看最新正式通知更稳妥。"
+    if category in {"notice_channels", "official_process"}:
+        preferred_fallback = "具体安排还是看最新正式通知更稳妥。"
+    elif category in {"canteen_locations", "canteen_recommendation"}:
+        preferred_fallback = "具体口味、营业时间和现场情况，还是以实地看到的为准。"
+    elif category == "college_activities":
+        preferred_fallback = "具体活动安排还是看学院公开通知更准。"
+
+    return {
+        "category": category,
+        "facts": strip_expression(reference),
+        "preferred_fallback": preferred_fallback,
+        "do_not_add": [
+            "知识库没有写明的实时细节",
+            "知识库没有写明的流程例外",
+        ],
+    }
 
 
 def campus_knowledge_reply(user_msg: str) -> str | None:
@@ -658,6 +874,18 @@ def classify_message(user_msg: str) -> str:
     if asks_convenience_locations(text):
         return "convenience_locations"
 
+    college_fact_context = contains_any(text, (
+        "专业区别", "专业方向", "学什么", "做什么", "自动化和电子信息", "电子信息和自动化",
+        "电子科学与技术", "人工智能专业", "学院竞赛", "竞赛有哪些", "蓝桥杯", "电子设计竞赛",
+        "智能车竞赛", "创新实验班", "产业班", "培养路径", "培养方向",
+        "大一一般", "大二一般", "大三一般", "大四一般", "哪个阶段", "阶段常见",
+    ))
+    if college_fact_context and college_companion_reply(text):
+        return "college_facts"
+
+    if college_companion_reply(text):
+        return "college_facts"
+
     if campus_knowledge_reply(text):
         return "campus_knowledge"
 
@@ -703,6 +931,9 @@ def template_reply(user_msg: str) -> str | None:
 
     if category == "campus_knowledge":
         return campus_query_channel_reply(user_msg) or campus_knowledge_reply(user_msg)
+
+    if category == "college_facts":
+        return college_companion_reply(user_msg)
 
     if category == "competition_resources":
         return (

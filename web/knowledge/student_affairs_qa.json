@@ -17,6 +17,48 @@
       "涉及政策、时间、费用、地点、电话的内容需回答为初稿知识库信息，并提醒以最新官方通知为准。"
     ]
   },
+  "governance": {
+    "source": "信电学院学生工作百问百答初稿与人工补充校对",
+    "owner": "小芯知识库维护者",
+    "last_verified": "2026-06-13",
+    "volatility": "semester",
+    "frequency": "high",
+    "fallback_channel": "学校/学院正式通知、辅导员、学工办、教学办",
+    "do_not_elaborate": [
+      "审批结果",
+      "实时政策细则",
+      "金额与时间节点的即时变化",
+      "个人办理进度"
+    ],
+    "knowledge_admission_questions": [
+      "这个问题是不是学生经常问",
+      "答案是不是至少一个学期内大概率稳定",
+      "能不能不依赖实时查询就安全回答",
+      "补进去之后，能不能明显减少拒答、绕答、幻觉或重复解释"
+    ],
+    "capacity": {
+      "max_items_by_path": {
+        "items": 120
+      },
+      "prune_rule": "保留高频事务导航和标准问答；超过一学期未命中且维护成本高的条目优先下线。"
+    }
+  },
+  "record_defaults": {
+    "items": {
+      "source": "信电学院学生事务问答知识库",
+      "owner": "小芯知识库维护者",
+      "last_verified": "2026-06-13",
+      "volatility": "semester",
+      "frequency": "high",
+      "fallback_channel": "学校/学院正式通知、辅导员、学工办、教学办",
+      "do_not_elaborate": [
+        "审批结果",
+        "实时政策细则",
+        "金额与时间节点的即时变化",
+        "个人办理进度"
+      ]
+    }
+  },
   "categories": [
     "综合事务",
     "帮困助学",

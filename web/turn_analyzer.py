@@ -523,13 +523,16 @@ _CONCERN_LABELS = {
 }
 
 
-def _extract_label(text: str) -> str:
+def _extract_label(text: str, fallback: str = "近况") -> str:
     """从用户消息中提取关键主题标签。"""
     for keyword, label in _CONCERN_LABELS.items():
         if keyword.lower() in text.lower():
             return label
-    # 取消息中可能的短语作为 label（取前 12 个字）
-    return text[:12].strip() if len(text) > 3 else "近况"
+    cleaned = re.sub(r"[，。！？?；;：:“”\"'（）()\[\]【】…~、]", " ", text)
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    if cleaned and len(cleaned) <= 8:
+        return cleaned
+    return fallback or "近况"
 
 
 def detect_followups(
@@ -545,7 +548,7 @@ def detect_followups(
 
     # 决策类：用户在纠结选择
     if _contains_any(text, _DECISION_KEYWORDS):
-        label = _extract_label(text)
+        label = _extract_label(text, fallback=TOPIC_LABELS.get(topic, "近况"))
         if label and len(label) >= 2:
             return {
                 "kind": "decision",
@@ -556,7 +559,7 @@ def detect_followups(
 
     # 事件类：即将发生的事
     if _contains_any(text, _EVENT_KEYWORDS) and not _contains_any(text, _RESOLUTION_KEYWORDS):
-        label = _extract_label(text)
+        label = _extract_label(text, fallback=TOPIC_LABELS.get(topic, "近况"))
         if label:
             return {
                 "kind": "event",
@@ -568,7 +571,7 @@ def detect_followups(
     # 困难类：用户表达了困难/焦虑 + 具体课程/话题
     has_concern_signal = _contains_any(text, _CONCERN_KEYWORDS)
     if has_concern_signal and (topic != "general_checkin" or mood in {"anxious", "frustrated"}):
-        label = _extract_label(text)
+        label = _extract_label(text, fallback=TOPIC_LABELS.get(topic, "近况"))
         intensity = "high" if mood in {"anxious", "frustrated"} else "medium"
         # 如果是积极情绪中的轻微困难，降低强度
         if mood in {"relaxed", "curious"}:

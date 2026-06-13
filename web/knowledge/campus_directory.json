@@ -8,6 +8,48 @@
     "entry_count": 29,
     "note": "仅包含有答案的条目；未填条目学生问到时建议咨询辅导员"
   },
+  "governance": {
+    "source": "校园办事地点指南与人工校对后的地点型短答事实",
+    "owner": "小芯知识库维护者",
+    "last_verified": "2026-06-13",
+    "volatility": "semester",
+    "frequency": "high",
+    "fallback_channel": "学校/学院正式通知、辅导员、校园地图",
+    "do_not_elaborate": [
+      "临时换办公室",
+      "实时办公时间",
+      "窗口排队情况",
+      "未公开联系方式"
+    ],
+    "knowledge_admission_questions": [
+      "这个问题是不是学生经常问",
+      "答案是不是至少一个学期内大概率稳定",
+      "能不能不依赖实时查询就安全回答",
+      "补进去之后，能不能明显减少拒答、绕答、幻觉或重复解释"
+    ],
+    "capacity": {
+      "max_items_by_path": {
+        "entries": 30
+      },
+      "prune_rule": "只保留最常问的一层办事地点答案；低频长尾地点优先不入库。"
+    }
+  },
+  "record_defaults": {
+    "entries": {
+      "source": "校园办事地点指南",
+      "owner": "小芯知识库维护者",
+      "last_verified": "2026-06-13",
+      "volatility": "semester",
+      "frequency": "high",
+      "fallback_channel": "学校/学院正式通知、辅导员、校园地图",
+      "do_not_elaborate": [
+        "实时办公时间",
+        "临时换办公室",
+        "未公开联系方式",
+        "现场办理进度"
+      ]
+    }
+  },
   "fallback_response": "这个我不太确定，你可以问问辅导员或者去学院官网查一下。",
   "entries": [
     {

@@ -232,6 +232,13 @@ class SemanticRouterTest(unittest.TestCase):
         self.assertEqual(fake_client.calls[0]["temperature"], 0)
         self.assertEqual(fake_client.calls[0]["max_tokens"], semantic_router.ROUTER_MAX_TOKENS)
 
+    def test_fallback_route_supports_college_companion_facts(self):
+        route = semantic_router.fallback_route("小芯，自动化和电子信息工程有什么区别？")
+
+        self.assertEqual(route["intent"], "college_facts")
+        self.assertEqual(route["reply_mode"], "knowledge_grounded")
+        self.assertIn("college_companion_facts", route["knowledge_domains"])
+
 
 if __name__ == "__main__":
     unittest.main()

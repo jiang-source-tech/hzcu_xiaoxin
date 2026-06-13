@@ -7,7 +7,13 @@
 
 小芯是浙大城市学院信息与电气工程学院的数字吉祥物和数字学长。项目目标不是做一个通用问答机器人，而是做一个有记忆、有边界、能陪伴新生成长的电子宠物型数字人。
 
-当前版本已回到更稳定、更利于缓存命中的主提示词结构：`SKILL.md` 作为长期稳定人格提示词，`prompts/` 只保留记忆协议和成长协议；校园生活、学生事务、地点信息放在结构化 JSON 知识库中，由后端确定性读取。近期校园生活知识库已补充校内饮品、快餐、便利店、打印、宿舍热水、空调租赁、宿舍维修和网络报修等生活信息，并同步增强 `/test` 的“吃货学生”角色与真实聊天审计用例。
+当前版本采用“强依赖模型 + 语义路由 + 收缩式知识库”的结构：
+
+- `SKILL.md` 负责长期稳定的人格、边界和说话风格。
+- `semantic_router.py` 先判断这轮到底是 `free_chat`、`knowledge_grounded` 还是 `hard_template`。
+- `web/knowledge/*.json` 只放高频、稳定、可确认的校园事实。
+- `knowledge_grounded` 仍然交给模型生成，但只能改写已给出的知识事实，不能自己补细节。
+- 近期校园生活知识库已补充校内饮品、快餐、便利店、打印、宿舍热水、空调租赁、宿舍维修和网络报修等生活信息，并同步增强 `/test` 的“吃货学生”角色与真实聊天审计用例。
 
 ---
 
@@ -16,24 +22,27 @@
 ```text
 用户消息
   -> semantic_router.route_message()
-       hard_template / knowledge_grounded / free_chat
+       判断是 hard_template / knowledge_grounded / free_chat
   -> hard_template
-       boundary_guard.template_reply() 直接短答或兜底
-  -> knowledge_grounded / free_chat
+       boundary_guard.template_reply() 直接返回硬边界短答
+  -> knowledge_grounded
+       knowledge_grounding_context() 提供受限事实
+       LLM 只允许改写事实，不允许补充新事实
+  -> free_chat
        build_system_prompt() = SKILL.md + 记忆 + 成长快照 + 关系状态
-       build_route_instruction() 注入本轮语义路由约束
-       调用 LLM 生成自然回复
+       交给 LLM 自然回复
   -> 后置检查
-       清理思考标记、检查半截回复、检查路由错配、检查越界表达、必要时重试或兜底
-  -> 返回 reply / speech / expression
+       清理思考标记、检查半截回复、检查越界表达、检查是否超出知识库范围
+       必要时重试或兜底
+  -> 返回 reply / speech / expression / state / next_hook
 ```
 
 这个版本的重点是平衡“人情味”和“少幻觉”：
 
-- 开放陪伴聊天交给模型自然生成。
+- 开放陪伴聊天交给模型自然生成，而不是被关键词模板劫持。
 - 语义路由先判断用户真实意图，避免把感谢、行动确认、情绪表达误打成知识库模板。
-- 事实型校园信息只从本地知识库读。
-- 知识库没写明的楼号、楼层、窗口、价格、营业时间、联系方式，不让模型补。
+- 事实型校园信息只从本地知识库读，命中后也只允许模型改写，不允许扩写。
+- 知识库没写明的楼号、楼层、窗口、价格、营业时间、联系方式、证件要求，不让模型补。
 - 模型回复后仍做越界检测，防止承诺代办、编造经历、预测录取、假设线下在场。
 
 ## 快速开始
@@ -60,30 +69,34 @@ DEEPSEEK_MODEL=deepseek-v4-flash
 ## 测试
 
 ```bash
-python -m pytest web/tests
+python -m unittest discover web/tests
 ```
 
 当前回归测试覆盖：
 
 - prompt 目录保持两文件结构，避免再次拆碎。
+- 语义路由优先判断真实意图，避免一提“食堂”“爱城院”就误触模板。
 - 食堂知识来自 `campus_life.json`，不包含已审查排除的错误事实。
 - 校园饮品、快餐、便利店、打印、宿舍服务等生活点位来自结构化知识库，不补价格、营业时间、口味排行等实时或主观信息。
 - 学生事务和校园地点优先从结构化知识库短答。
-- `/test` 角色包含行政事务角色“事务新生”。
-- `/test` 的“吃货学生”会覆盖食堂、奶茶咖啡、快餐和便利店等校园生活问法。
+- 陪伴增强型事实从 `college_companion_facts.json` 命中，覆盖专业方向、竞赛类型、培养路径和阶段困惑。
+- `college_companion_facts.json` 每条记录必须带 `source_refs`，不能凭空补事实。
+- `turn_analyzer` 的 followup label 不再直接截原始用户句子。
+- `/test` 角色包含行政事务角色“事务新生”和餐饮生活压测角色“吃货学生”。
 - 新生继续追问时不会被误判为结束对话。
 - 语义路由能区分硬边界、知识库问答、自由聊天和消息话术整理。
-- Windows 下记忆/成长工具的子进程输出按字节捕获并容错解码，避免后台 `_readerthread` 编码异常。
 - 小芯不能编造联系方式、竞赛资源、真实学生经历、食堂口味排行、录取概率等。
 - 真实聊天审计覆盖宿管联系方式、心理咨询代预约、个人档案代查、打印店误导位置、宿舍网络报修等边界场景。
 
 ## 项目结构
 
 ```text
-hzcu_ai_pet/
+hzcu_xiaoxin/
 ├── README.md
 ├── docs/
 │   ├── PROJECT_GUIDE.md
+│   ├── KNOWLEDGE_GOVERNANCE.md
+│   ├── CAMPUS_KNOWLEDGE_UPDATES.md
 │   └── ELECTRONIC_PET_NEXT_STAGE.md
 ├── skills/xiaoxin-senior/
 │   ├── SKILL.md                    # 小芯长期稳定人格、知识边界、回答风格
@@ -97,18 +110,42 @@ hzcu_ai_pet/
 └── web/
     ├── app.py                      # Flask 后端、LLM 调用、会话、自对话测试
     ├── boundary_guard.py           # 确定性短答、知识库命中、越界检测、TTS 裁剪
+    ├── semantic_router.py          # 语义路由：hard_template / knowledge_grounded / free_chat
     ├── relationship_state.py       # 关系状态和轻量问候
-    ├── semantic_router.py          # 本轮意图、焦点和回复模式路由
     ├── turn_analyzer.py            # 用户消息分析
     ├── knowledge/
     │   ├── campus_life.json        # 食堂、饮品、快餐、便利店、打印、宿舍、交通、快递等校园生活知识
     │   ├── campus_directory.json   # 校园办事地点
-    │   └── student_affairs_qa.json # 学生事务问答
+    │   ├── student_affairs_qa.json # 学生事务问答
+    │   └── college_companion_facts.json # 专业方向、竞赛类型、培养路径、阶段困惑
     ├── static/
     │   ├── index.html
     │   └── test.html
     └── tests/
 ```
+
+## 知识库治理
+
+当前版本开始把“收缩式扩充”落成显式规则：
+
+- 事实继续放在结构化知识库，不回写进 `SKILL.md`。
+- 不把知识库做成“全校客服台”，只补高频、稳定、可确认的事实。
+- 每份知识库都有 `governance` 和 `record_defaults`，加载时会校验：
+  - `source`
+  - `owner`
+  - `last_verified`
+  - `volatility`
+  - `frequency`
+  - `fallback_channel`
+  - `do_not_elaborate`
+- `college_companion_facts.json` 这类二次整理知识还必须带 `source_refs`，只能引用现有 `SKILL.md` 或既有结构化知识。
+- 新条目默认先过“四问”：
+  - 这个问题是不是学生经常问
+  - 答案是不是至少一个学期内大概率稳定
+  - 能不能不依赖实时查询就安全回答
+  - 补进去之后，能不能明显减少拒答、绕答、幻觉或重复解释
+
+详细维护规则见 [docs/KNOWLEDGE_GOVERNANCE.md](docs/KNOWLEDGE_GOVERNANCE.md)。
 
 ## 知识库边界
 
@@ -122,11 +159,11 @@ hzcu_ai_pet/
 - 超市和便利店点位包括：南校区二食堂旁边启真超市、晨苑食堂旁边小超市；北校区北秀食堂旁边 711 便利店。
 - 打印服务包括：南校区晨苑食堂旁边有打印店，北校区北秀食堂一楼有打印店；很多教学楼有打印机，可以扫码自助打印。
 - 宿舍服务包括：宿舍热水大概早上六点多开始供应，到晚上 11:30 左右结束；空调租赁问宿管阿姨；宿舍维修和宿舍网络故障可在爱城院-智慧公寓里报修，网络问题也可去一楼宿管处报修。
-- 对饮品、快餐、便利店、打印、宿舍服务等生活信息，只回答已写入知识库的位置或规则；不编造营业时间、价格、库存、排队情况、处理进度或口味排行。
 - 学生日常沟通渠道包含“爱城院”、学校/学院正式通知、年级群/班级群和辅导员通知。
 - 校园卡余额可以在“爱城院”中查询；成绩、绩点等学习结果可以在教务系统中查询，小芯不能代查具体结果。
 - 信电学院活动只概括公开资料中出现过的类型，不编造科技文化节、机器人现场画面等无来源细节。
 - 学生事务、心理咨询、校园卡补办、医保等问题优先从 `student_affairs_qa.json` 和 `campus_directory.json` 命中，回答后提醒以学校或学院最新通知为准。
+- `knowledge_grounded` 回答允许自然改写，但不允许补出知识库没写明的证件、流程例外、实验室建议或老师评价。
 - 真实聊天审计中发现的硬边界已加固：不帮用户拿宿管等私人联系方式，不替用户预约心理咨询，不代查个人档案内容。
 
 ## `/test` 自对话角色

@@ -26,6 +26,7 @@ KNOWLEDGE_CATEGORIES = {
     "quick_service_locations": ["quick_service_spots"],
     "convenience_locations": ["convenience_spots"],
     "campus_knowledge": ["campus_directory", "student_affairs"],
+    "college_facts": ["college_companion_facts"],
     "notice_channels": ["notice_channels"],
     "college_activities": ["college_activities"],
     "official_process": ["official_process", "notice_channels"],
@@ -152,6 +153,7 @@ reply_mode 只能是：
 - 只提到“成绩”不等于查个人成绩；如果是在问补考、重修、挂科补救，应判为 knowledge_grounded/official_process。
 - 只有明确要求查询个人成绩、绩点、分数结果，才判为 private_records/hard_template。
 - 只有明确要求预测录取概率、保证能上、替用户做志愿选择，才判为 admissions_guidance/hard_template。
+- 用户问专业区别、学院常见竞赛、特色培养路径、年级阶段常见困惑时，优先判为 knowledge_grounded，knowledge_domains 可用 college_companion_facts。
 - 用户请小芯整理“我自己去问老师/辅导员”的问题模板、消息话术或问法时，判为 message_drafting/free_chat；不要当成联系方式代办。
 - 只有用户要求小芯替他去问、联系、获取、拿到后转发电话/微信/邮箱等，才判为 official_contact/hard_template。
 - 用户在感谢、说回头查、改天去试试时，通常是 free_chat。
