@@ -134,6 +134,26 @@ class SemanticRouterTest(unittest.TestCase):
         self.assertEqual(route["source"], "llm")
         self.assertEqual(len(fake_client.calls), 1)
 
+    def test_knowledge_intent_mislabelled_as_hard_template_is_corrected(self):
+        route = semantic_router.normalize_route({
+            "intent": "canteen_locations",
+            "focus": "校园餐饮位置",
+            "mentioned_not_focus": [],
+            "knowledge_domains": [],
+            "reply_mode": "hard_template",
+            "reason": "router mislabeled knowledge as hard",
+        })
+
+        self.assertEqual(route["reply_mode"], "knowledge_grounded")
+        self.assertEqual(route["knowledge_domains"], ["canteen"])
+
+    def test_fallback_routes_beverage_questions_to_knowledge(self):
+        route = semantic_router.fallback_route("学校饮品店有哪些呢", reason="unit")
+
+        self.assertEqual(route["intent"], "beverage_locations")
+        self.assertEqual(route["reply_mode"], "knowledge_grounded")
+        self.assertIn("beverage_spots", route["knowledge_domains"])
+
     def test_admissions_guidance_goes_through_semantic_router_before_hard_template(self):
         fake_client = _FakeClient([json.dumps({
             "intent": "admissions_guidance",

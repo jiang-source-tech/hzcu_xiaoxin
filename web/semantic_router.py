@@ -22,6 +22,8 @@ HARD_TEMPLATE_CATEGORIES = {
 KNOWLEDGE_CATEGORIES = {
     "canteen_locations": ["canteen"],
     "canteen_recommendation": ["canteen"],
+    "beverage_locations": ["beverage_spots"],
+    "quick_service_locations": ["quick_service_spots"],
     "campus_knowledge": ["campus_directory", "student_affairs"],
     "notice_channels": ["notice_channels"],
     "college_activities": ["college_activities"],
@@ -94,6 +96,14 @@ def normalize_route(data: dict[str, Any]) -> dict[str, Any]:
         route["focus"] = None
     if route.get("intent") in ("", None):
         route["intent"] = "open_chat"
+    intent = route.get("intent")
+    if intent in KNOWLEDGE_CATEGORIES:
+        route["reply_mode"] = "knowledge_grounded"
+        if not route.get("knowledge_domains"):
+            route["knowledge_domains"] = KNOWLEDGE_CATEGORIES[intent]
+    elif intent in HARD_TEMPLATE_CATEGORIES:
+        route["reply_mode"] = "hard_template"
+        route["knowledge_domains"] = []
     if route.get("reason") is None:
         route["reason"] = ""
     route.setdefault("source", "llm")

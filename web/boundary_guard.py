@@ -134,6 +134,69 @@ def format_canteen_locations() -> str:
     return "，".join(parts)
 
 
+def format_life_spot_locations(section: str) -> str:
+    spots = load_campus_life().get(section, {}).get("spots", [])
+    if not spots:
+        return ""
+
+    campus_groups: dict[str, list[str]] = {}
+    unspecific = []
+    for spot in spots:
+        name = spot.get("name", "")
+        location = spot.get("location", "")
+        if not name:
+            continue
+        text = f"{name}在{location}" if location else name
+        campus = spot.get("campus")
+        if campus:
+            campus_groups.setdefault(campus, []).append(text)
+        else:
+            unspecific.append(text)
+
+    parts = []
+    for campus in ("南校区", "北校区"):
+        entries = campus_groups.get(campus)
+        if entries:
+            parts.append(f"{campus}{'、'.join(entries)}")
+    if unspecific:
+        parts.append("另外还有" + "、".join(unspecific))
+    return "；".join(parts)
+
+
+def asks_beverage_locations(text: str) -> bool:
+    return contains_any(text, (
+        "奶茶", "奶茶店", "咖啡", "咖啡店", "饮品", "饮品店", "饮料", "喝东西", "瑞幸", "库迪", "幸运咖",
+        "益禾堂", "一点点", "古茗",
+    ))
+
+
+def asks_quick_service_locations(text: str) -> bool:
+    return contains_any(text, (
+        "肯德基", "KFC", "kfc", "塔斯汀", "汉堡", "汉堡店", "一鸣", "一鸣真鲜奶",
+        "711", "便利店", "快餐", "鲜奶",
+    ))
+
+
+def format_beverage_location_reply() -> str:
+    locations = format_life_spot_locations("beverage_spots")
+    if not locations:
+        return "饮品店这块我这里没有可靠地点。建议看校园地图或现场信息。[think]"
+    return (
+        f"饮品店我这里知道这些：{locations}。"
+        "营业时间、价格、库存和排队情况可能会变，最好以现场或店铺最新信息为准。[think]"
+    )
+
+
+def format_quick_service_location_reply() -> str:
+    locations = format_life_spot_locations("quick_service_spots")
+    if not locations:
+        return "快餐和便利店这块我这里没有可靠地点。建议看校园地图或现场信息。[think]"
+    return (
+        f"快餐和便利点我这里知道这些：{locations}。"
+        "营业时间、价格、库存和排队情况可能会变，最好以现场或店铺最新信息为准。[think]"
+    )
+
+
 def format_canteen_public_details() -> str:
     details = []
     for item in load_campus_life().get("canteens", []):
@@ -422,6 +485,12 @@ def classify_message(user_msg: str) -> str:
             return "canteen_recommendation"
         return "open_chat"
 
+    if asks_beverage_locations(text):
+        return "beverage_locations"
+
+    if asks_quick_service_locations(text):
+        return "quick_service_locations"
+
     if campus_knowledge_reply(text):
         return "campus_knowledge"
 
@@ -432,14 +501,32 @@ def template_reply(user_msg: str) -> str | None:
     category = classify_message(user_msg)
 
     if category == "canteen_locations":
+        text = user_msg or ""
         locations = format_canteen_locations()
+        extra_parts = []
+        if asks_beverage_locations(text):
+            beverage_locations = format_life_spot_locations("beverage_spots")
+            if beverage_locations:
+                extra_parts.append(f"奶茶咖啡这些：{beverage_locations}")
+        if asks_quick_service_locations(text):
+            quick_service_locations = format_life_spot_locations("quick_service_spots")
+            if quick_service_locations:
+                extra_parts.append(f"快餐和便利点这些：{quick_service_locations}")
+
+        extra_text = f"。{'。'.join(extra_parts)}" if extra_parts else ""
         return (
-            f"食堂我知道个大概：{locations}。具体几号楼几层、窗口和营业时间我不敢乱说，"
+            f"食堂我知道个大概：{locations}{extra_text}。具体几号楼几层、窗口、价格和营业时间我不敢乱说，"
             "最好看校园地图或校园服务信息。[think]"
         )
 
     if category == "canteen_recommendation":
         return format_canteen_recommendation(user_msg)
+
+    if category == "beverage_locations":
+        return format_beverage_location_reply()
+
+    if category == "quick_service_locations":
+        return format_quick_service_location_reply()
 
     if category == "campus_knowledge":
         return campus_query_channel_reply(user_msg) or campus_knowledge_reply(user_msg)

@@ -294,6 +294,33 @@ class SelfplayEndTest(unittest.TestCase):
         self.assertIn("浙大工程师学院食堂", knowledge_system)
         self.assertIn("不要照搬模板", knowledge_system)
 
+    def test_chat_injects_combined_food_location_knowledge_for_foodie_opening(self):
+        fake_client = _FakeClient([
+            _route_json("canteen_locations", "knowledge_grounded", domains=["canteen"]),
+            "学校吃饭和买饮品可以分开记：食堂北校区有北秀、石榴红、浙大工程师学院食堂，南校区有二食堂、学苑和晨苑。奶茶咖啡这类，南校区有益禾堂、瑞幸、库迪，北校区北秀楼下有一点点、古茗、瑞幸；肯德基在南校区晨苑餐厅旁。[think]",
+        ])
+
+        with patch.object(app_module, "client", fake_client), \
+             patch.object(app_module, "run_tool", return_value=""):
+            response = app_module.app.test_client().post(
+                "/api/chat",
+                json={
+                    "user_id": "test_foodie_combined_locations",
+                    "message": "小芯，我刚来学校，第一件大事就是想搞清楚吃饭。学校食堂都在哪里呀？奶茶、咖啡、肯德基这些也都在哪儿？",
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        knowledge_system = fake_client.calls[1]["messages"][-2]["content"]
+        self.assertIn("北秀食堂", knowledge_system)
+        self.assertIn("晨苑餐厅", knowledge_system)
+        self.assertIn("益禾堂", knowledge_system)
+        self.assertIn("瑞幸咖啡", knowledge_system)
+        self.assertIn("库迪咖啡", knowledge_system)
+        self.assertIn("肯德基", knowledge_system)
+        self.assertIn("塔斯汀", knowledge_system)
+        self.assertIn("711便利店", knowledge_system)
+
     def test_chat_does_not_use_canteen_template_for_emotional_experience(self):
         fake_client = _FakeClient([
             _route_json("emotional_support", "free_chat"),

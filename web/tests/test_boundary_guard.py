@@ -95,6 +95,43 @@ class BoundaryGuardTest(unittest.TestCase):
         self.assertIn("88296000", reply)
         self.assertIn("以学校或学院最新通知为准", reply)
 
+    def test_mixed_canteen_beverage_and_fast_food_query_keeps_all_locations(self):
+        reply = guard.template_reply(
+            "小芯，我刚来学校，第一件大事就是想搞清楚吃饭。学校食堂都在哪里呀？奶茶、咖啡、肯德基这些也都在哪儿？"
+        )
+
+        self.assertIsNotNone(reply)
+        self.assertIn("北秀食堂", reply)
+        self.assertIn("晨苑餐厅", reply)
+        self.assertIn("益禾堂", reply)
+        self.assertIn("瑞幸咖啡", reply)
+        self.assertIn("库迪咖啡", reply)
+        self.assertIn("肯德基", reply)
+        self.assertIn("塔斯汀", reply)
+        self.assertIn("711便利店", reply)
+        self.assertNotIn("奶茶咖啡肯德基这些具体位置我不太确定", reply)
+
+    def test_beverage_location_question_answers_known_drink_spots(self):
+        reply = guard.template_reply("学校饮品店有哪些呢")
+
+        self.assertIsNotNone(reply)
+        self.assertIn("益禾堂", reply)
+        self.assertIn("瑞幸咖啡", reply)
+        self.assertIn("库迪咖啡", reply)
+        self.assertIn("幸运咖", reply)
+        self.assertIn("一点点奶茶", reply)
+        self.assertIn("古茗", reply)
+        self.assertNotIn("具体叫什么名字、开在哪里", reply)
+
+    def test_quick_service_location_question_answers_known_spots(self):
+        reply = guard.template_reply("学校便利店和汉堡店有哪些")
+
+        self.assertIsNotNone(reply)
+        self.assertIn("肯德基", reply)
+        self.assertIn("塔斯汀", reply)
+        self.assertIn("一鸣真鲜奶", reply)
+        self.assertIn("711便利店", reply)
+
     def test_canteen_emotional_experience_does_not_trigger_location_template(self):
         reply = guard.template_reply("北秀食堂我知道在哪了，里面好吵，我有点慌，是不是正常呀？")
 
