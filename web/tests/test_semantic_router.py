@@ -161,6 +161,20 @@ class SemanticRouterTest(unittest.TestCase):
         self.assertEqual(route["reply_mode"], "knowledge_grounded")
         self.assertIn("convenience_spots", route["knowledge_domains"])
 
+    def test_fallback_routes_delivery_questions_to_delivery_knowledge(self):
+        route = semantic_router.fallback_route("南校区快递在哪拿？中通和顺丰一样吗？", reason="unit")
+
+        self.assertEqual(route["intent"], "delivery_locations")
+        self.assertEqual(route["reply_mode"], "knowledge_grounded")
+        self.assertIn("delivery", route["knowledge_domains"])
+
+    def test_fallback_routes_transportation_questions_to_transportation_knowledge(self):
+        route = semantic_router.fallback_route("离城市学院最近的地铁站是哪个？从杭州东站怎么来？", reason="unit")
+
+        self.assertEqual(route["intent"], "transportation")
+        self.assertEqual(route["reply_mode"], "knowledge_grounded")
+        self.assertIn("transportation", route["knowledge_domains"])
+
     def test_admissions_guidance_goes_through_semantic_router_before_hard_template(self):
         fake_client = _FakeClient([json.dumps({
             "intent": "admissions_guidance",

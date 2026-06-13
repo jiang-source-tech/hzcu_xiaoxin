@@ -29,6 +29,8 @@ KNOWLEDGE_CATEGORIES = {
     "notice_channels": ["notice_channels"],
     "college_activities": ["college_activities"],
     "official_process": ["official_process", "notice_channels"],
+    "delivery_locations": ["delivery"],
+    "transportation": ["transportation"],
 }
 
 

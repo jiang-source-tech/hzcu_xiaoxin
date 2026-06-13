@@ -329,6 +329,45 @@ def format_college_activity_summary() -> str:
     )
 
 
+def format_delivery_reply() -> str:
+    delivery = load_campus_life().get("delivery", {})
+    stations = delivery.get("stations") or []
+    by_campus: dict[str, list[str]] = {}
+    for station in stations:
+        name = station.get("name", "")
+        location = station.get("location", "")
+        campus = station.get("campus") or "其他"
+        if not name:
+            continue
+        text = f"{name}在{location}" if location else name
+        notes = station.get("notes") or []
+        if notes:
+            text += f"（{ '，'.join(notes) }）"
+        by_campus.setdefault(campus, []).append(text)
+
+    campus_parts = []
+    for campus in ("南校区", "北校区", "其他"):
+        entries = by_campus.get(campus)
+        if entries:
+            campus_parts.append(f"{campus}常见点位有{'、'.join(entries)}")
+
+    known_text = "；".join(campus_parts) if campus_parts else "我这里没有可靠快递点位"
+    return (
+        f"快递取件先看短信、菜鸟App或对应快递平台里的取件信息，通知写哪里就去哪里。"
+        f"{known_text}。我不能替你判断某一件快递实时在哪，取件码、营业时间和临时调整也以平台通知为准。[think]"
+    )
+
+
+def format_transportation_reply() -> str:
+    known = load_campus_life().get("transportation", {}).get("known") or []
+    if not known:
+        return "交通这块我这里没有可靠信息，建议以地图导航和学校最新说明为准。[think]"
+    return (
+        f"交通我这里记的是：{'；'.join(known)}。"
+        "实时路况、公交到站和打车价格会变，具体出发时还是以地图导航为准。[think]"
+    )
+
+
 def campus_query_channel_reply(user_msg: str) -> str | None:
     text = user_msg or ""
     has_card_balance = contains_any(text, ("校园卡余额", "饭卡余额", "一卡通余额", "卡里余额", "校园卡还有多少钱"))
@@ -524,6 +563,14 @@ def classify_message(user_msg: str) -> str:
     if network_repair_context and contains_any(text, ("报修", "坏了", "断了", "连不上", "哪里", "在哪", "怎么")):
         return "campus_knowledge"
 
+    delivery_context = contains_any(text, ("快递", "取件", "拿快递", "菜鸟", "驿站", "包裹", "中通", "顺丰", "圆通", "京东"))
+    if delivery_context:
+        return "delivery_locations"
+
+    transportation_context = contains_any(text, ("地铁", "公交", "杭州东站", "杭州站", "东站", "善贤", "善闲", "交通", "怎么来", "到学校", "到校", "打车"))
+    if transportation_context:
+        return "transportation"
+
     official_contact_context = contains_any(text, ("联系方式", "电话", "手机号", "微信", "邮箱"))
     contact_fetch_context = contains_any(text, ("帮我问", "帮我联系", "替我问", "替我联系", "能不能问", "去问一下"))
     official_unit_context = contains_any(text, ("实验中心", "实验室", "学院", "教务", "辅导员", "老师", "办公室", "负责老师"))
@@ -635,6 +682,12 @@ def template_reply(user_msg: str) -> str | None:
 
     if category == "college_activities":
         return format_college_activity_summary()
+
+    if category == "delivery_locations":
+        return format_delivery_reply()
+
+    if category == "transportation":
+        return format_transportation_reply()
 
     if category == "private_records":
         return (

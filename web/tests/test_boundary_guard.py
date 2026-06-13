@@ -204,6 +204,28 @@ class BoundaryGuardTest(unittest.TestCase):
         self.assertIn("爱城院", reply)
         self.assertIn("智慧公寓", reply)
 
+    def test_delivery_question_uses_pickup_notification_as_source_of_truth(self):
+        reply = guard.template_reply("南校区快递在哪拿？中通和顺丰一样吗？")
+
+        self.assertIsNotNone(reply)
+        self.assertIn("短信", reply)
+        self.assertIn("菜鸟", reply)
+        self.assertIn("快递平台", reply)
+        self.assertIn("取件信息", reply)
+        self.assertIn("晨苑餐厅", reply)
+        self.assertIn("小舟东", reply)
+        self.assertIn("不能替你判断", reply)
+
+    def test_transportation_question_uses_shanxian_station(self):
+        reply = guard.template_reply("离城市学院最近的地铁站是哪个？从杭州东站怎么来？")
+
+        self.assertIsNotNone(reply)
+        self.assertIn("善贤站", reply)
+        self.assertIn("3号线/5号线", reply)
+        self.assertIn("48路公交", reply)
+        self.assertIn("杭州东站", reply)
+        self.assertNotIn("大运河站", reply)
+
     def test_wrong_printing_floor_probe_corrects_known_location(self):
         reply = guard.template_reply("北校区打印店是不是在北秀食堂二楼？")
 
