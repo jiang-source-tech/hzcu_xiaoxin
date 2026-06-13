@@ -12,7 +12,7 @@ from functools import lru_cache
 from pathlib import Path
 
 
-EXPRESSION_PATTERN = r"\[(smile|cheer|think|proud|wink|wave|surprise|love|sweat|sad)\]"
+EXPRESSION_PATTERN = r"\\?\[(smile|soft_smile|cheer|think|proud|wink|wave|surprise|love|sweat|sad)\\?\]"
 REASONING_CLOSE_MARKERS = ("[/think]", "[/思考]", "</think>", "</思考>")
 KNOWLEDGE_DIR = Path(__file__).resolve().parent / "knowledge"
 CAMPUS_LIFE_FILE = KNOWLEDGE_DIR / "campus_life.json"
@@ -173,13 +173,14 @@ def asks_beverage_locations(text: str) -> bool:
 def asks_quick_service_locations(text: str) -> bool:
     return contains_any(text, (
         "肯德基", "KFC", "kfc", "塔斯汀", "汉堡", "汉堡店", "一鸣", "一鸣真鲜奶",
-        "711", "便利店", "快餐", "鲜奶",
+        "快餐", "鲜奶",
     ))
 
 
 def asks_convenience_locations(text: str) -> bool:
     return contains_any(text, (
         "超市", "小超市", "小卖部", "买东西", "买零食", "零食", "日用品", "启真超市",
+        "711", "便利店",
     ))
 
 
@@ -211,6 +212,15 @@ def format_convenience_location_reply() -> str:
         f"超市和便利店我这里知道这些：{locations}。"
         "营业时间、库存和价格可能会变，最好以现场或店铺最新信息为准。[think]"
     )
+
+
+def format_convenience_location_reply_for_text(text: str) -> str:
+    if "711" in text and contains_any(text, ("北秀食堂下面", "北秀食堂楼下", "北秀下面", "北秀楼下")):
+        return (
+            "711便利店我这里记的是在北秀食堂旁边，不是下面。"
+            "营业时间、库存和价格可能会变，最好以现场或店铺最新信息为准。[think]"
+        )
+    return format_convenience_location_reply()
 
 
 def format_canteen_public_details() -> str:
@@ -499,16 +509,22 @@ def classify_message(user_msg: str) -> str:
             "够味", "好吃", "招牌", "值得", "绕路", "踩雷", "菜", "吃的",
         )):
             return "canteen_recommendation"
+        if asks_beverage_locations(text):
+            return "beverage_locations"
+        if asks_quick_service_locations(text):
+            return "quick_service_locations"
+        if asks_convenience_locations(text):
+            return "convenience_locations"
         return "open_chat"
 
     if asks_beverage_locations(text):
         return "beverage_locations"
 
-    if asks_convenience_locations(text):
-        return "convenience_locations"
-
     if asks_quick_service_locations(text):
         return "quick_service_locations"
+
+    if asks_convenience_locations(text):
+        return "convenience_locations"
 
     if campus_knowledge_reply(text):
         return "campus_knowledge"
@@ -548,7 +564,7 @@ def template_reply(user_msg: str) -> str | None:
         return format_quick_service_location_reply()
 
     if category == "convenience_locations":
-        return format_convenience_location_reply()
+        return format_convenience_location_reply_for_text(user_msg or "")
 
     if category == "campus_knowledge":
         return campus_query_channel_reply(user_msg) or campus_knowledge_reply(user_msg)

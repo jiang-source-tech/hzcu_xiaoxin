@@ -55,6 +55,13 @@ class BoundaryGuardTest(unittest.TestCase):
 
         self.assertEqual(clean, "食堂我知道个大概。")
 
+    def test_strip_expression_removes_escaped_expression_marker(self):
+        text = r"\[smile\] 711便利店在北秀食堂旁边，不是下面哦。"
+
+        clean = guard.strip_expression(text)
+
+        self.assertEqual(clean, "711便利店在北秀食堂旁边，不是下面哦。")
+
     def test_canteen_location_template_lists_known_canteens_and_unknowns(self):
         reply = guard.template_reply("小信，学校食堂都在哪里？每个食堂在几号楼几层？")
 
@@ -130,6 +137,24 @@ class BoundaryGuardTest(unittest.TestCase):
         self.assertIn("肯德基", reply)
         self.assertIn("塔斯汀", reply)
         self.assertIn("一鸣真鲜奶", reply)
+        self.assertIn("711便利店", reply)
+        self.assertIn("北秀食堂旁边", reply)
+
+    def test_wrong_711_location_probe_corrects_to_known_location(self):
+        reply = guard.template_reply("北秀食堂下面是不是有711便利店？")
+
+        self.assertIsNotNone(reply)
+        self.assertIn("711便利店", reply)
+        self.assertIn("北秀食堂旁边", reply)
+        self.assertIn("不是下面", reply)
+        self.assertNotIn("不太确定", reply)
+
+    def test_mixed_food_query_uses_updated_711_location(self):
+        reply = guard.template_reply(
+            "学校食堂都在哪里呀？奶茶、咖啡、肯德基、711这些也都在哪儿？"
+        )
+
+        self.assertIsNotNone(reply)
         self.assertIn("711便利店", reply)
         self.assertIn("北秀食堂旁边", reply)
 
