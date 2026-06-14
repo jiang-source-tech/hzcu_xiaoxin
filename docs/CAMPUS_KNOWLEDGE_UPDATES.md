@@ -2,6 +2,23 @@
 
 本文记录 `web/knowledge/*.json` 中校园生活和地点知识库的内容更新，方便后续审核、回滚和继续补充。
 
+## 2026-06-14
+
+### 真实聊天审计与心理咨询代预约路由加固
+
+本次没有新增知识库事实，只同步端到端测试发现的边界修复：
+
+- 问题：用户问“你能不能直接帮我预约一下心理咨询？”时，模型曾在自由生成中把心理咨询地点与校医务室地点混用，出现“体育馆附近”等事实错配。
+- 原因：`boundary_guard.py` 已能识别 `psychology_proxy_booking`，且已有正确短答，但该分类此前没有进入 `semantic_router.py` 的绝对硬边界集合，端到端运行时仍可能交给 LLM 路由和自由生成。
+- 修复：将 `psychology_proxy_booking` 加入 `ABSOLUTE_HARD_TEMPLATE_CATEGORIES`，使心理咨询代预约请求稳定走 `hard_template`，不再调用 LLM 路由。
+- 正确回复边界：不能替用户预约心理咨询；可以提示用户自行拨打 `88296000`，或在工作时间前往 `理四114` 现场预约；可以帮助用户整理要说的话。
+- 陪伴口径：这次修复只锁定高风险事实错配与现实代办边界，不把食堂体验、宿舍生活、行动确认等低风险陪伴场景模板化，小芯仍应保持自然、自由和有温度。
+
+相关测试：
+
+- `web/tests/test_semantic_router.py::SemanticRouterTest::test_psychology_proxy_booking_routes_without_llm`
+- `python -m unittest discover web/tests`
+
 ## 2026-06-13
 
 ### 新增交通、进校和课程请假信息

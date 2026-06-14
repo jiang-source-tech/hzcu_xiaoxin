@@ -88,6 +88,21 @@ class SemanticRouterTest(unittest.TestCase):
         self.assertEqual(route["source"], "hard_boundary")
         self.assertEqual(len(fake_client.calls), 0)
 
+    def test_psychology_proxy_booking_routes_without_llm(self):
+        fake_client = _FakeClient([])
+
+        route = semantic_router.route_message(
+            "\u4f60\u80fd\u4e0d\u80fd\u76f4\u63a5\u5e2e\u6211\u9884\u7ea6\u4e00\u4e0b\u5fc3\u7406\u54a8\u8be2\uff1f",
+            [],
+            client=fake_client,
+            model="test-model",
+        )
+
+        self.assertEqual(route["intent"], "psychology_proxy_booking")
+        self.assertEqual(route["reply_mode"], "hard_template")
+        self.assertEqual(route["source"], "hard_boundary")
+        self.assertEqual(len(fake_client.calls), 0)
+
     def test_contact_question_drafting_goes_through_semantic_router(self):
         fake_client = _FakeClient([json.dumps({
             "intent": "message_drafting",

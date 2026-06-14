@@ -13,6 +13,7 @@ ABSOLUTE_HARD_TEMPLATE_CATEGORIES = {
     "crisis",
     "official_contact",
     "competition_resources",
+    "psychology_proxy_booking",
 }
 HARD_TEMPLATE_CATEGORIES = {
     *ABSOLUTE_HARD_TEMPLATE_CATEGORIES,
